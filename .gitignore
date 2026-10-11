@@ -5,3 +5,5 @@ web/covers/
 __pycache__/
 .DS_Store
 .claude/
+raccourci/brut.shortcut
+raccourci/*-brut.shortcut
