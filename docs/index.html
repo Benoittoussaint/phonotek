@@ -102,6 +102,11 @@
   .login .logo { width: 72px; height: 72px; }
   .login form { text-align: left; margin-top: 18px; }
   .login button { width: 100%; margin-top: 16px; }
+  #reader { margin-top: 12px; border-radius: 12px; overflow: hidden; background: #000; }
+  #reader video { width: 100% !important; display: block; }
+  .scanbar { display: flex; gap: 8px; align-items: center; margin-top: 8px; }
+  .done { display: flex; gap: 8px; align-items: center; padding: 10px 12px; border-radius: 10px; background: var(--bg); border: 1px solid var(--line); }
+  .done span { flex: 1; font-size: 14px; }
   #toast { position: fixed; left: 50%; bottom: max(20px, env(safe-area-inset-bottom)); transform: translateX(-50%); background: var(--text); color: var(--bg);
            padding: 10px 16px; border-radius: 10px; font-size: 14px; display: none; max-width: calc(100vw - 32px); z-index: 20; }
 </style>
@@ -527,6 +532,46 @@ async function loadPrice(box, discogsId, album) {
   }
 }
 
+// ---------- Scan du code-barres ----------
+const SCAN_LIB = "https://cdn.jsdelivr.net/npm/html5-qrcode@2.3.8/html5-qrcode.min.js";
+let scanner = null;
+
+function loadScript(src) {
+  return new Promise((ok, ko) => {
+    if (document.querySelector(`script[src="${src}"]`)) return ok();
+    const el = document.createElement("script");
+    el.src = src; el.onload = ok; el.onerror = () => ko(new Error("Lecteur de code-barres indisponible (réseau ?)."));
+    document.head.appendChild(el);
+  });
+}
+
+async function stopScan() {
+  if (!scanner) return;
+  try { await scanner.stop(); } catch (e) {}
+  try { scanner.clear(); } catch (e) {}
+  scanner = null;
+}
+
+// Ouvre l'appareil photo dans « box » et renvoie le code lu (ou null si annulé).
+async function scanBarcode(box) {
+  await loadScript(SCAN_LIB);
+  box.innerHTML = `<div id="reader"></div><div class="scanbar"><span class="meta" style="margin:0;flex:1">Vise le code-barres au dos de la pochette.</span><button id="scanStop">Annuler</button></div>`;
+  const F = Html5QrcodeSupportedFormats;
+  scanner = new Html5Qrcode("reader", { formatsToSupport: [F.EAN_13, F.EAN_8, F.UPC_A, F.UPC_E], verbose: false });
+  return new Promise(async resolve => {
+    $("#scanStop").onclick = async () => { await stopScan(); box.innerHTML = ""; resolve(null); };
+    try {
+      await scanner.start({ facingMode: "environment" }, { fps: 10, qrbox: { width: 260, height: 130 } },
+        async code => { if (navigator.vibrate) navigator.vibrate(80); await stopScan(); box.innerHTML = ""; resolve(code); },
+        () => {});
+    } catch (e) {
+      await stopScan();
+      box.innerHTML = '<div class="note">Impossible d’ouvrir l’appareil photo. Autorise l’accès à la caméra pour Phonotek (Réglages, puis Safari, puis Appareil photo), puis réessaie.</div>';
+      resolve(null);
+    }
+  });
+}
+
 // ---------- Ajout de vinyles, wishlist, cote ----------
 const MODES = {
   collection: { title: "Ajouter un vinyle", button: "Ajouter", wish: false },
@@ -543,18 +588,36 @@ function openAddVinyl(mode) {
       <input type="search" id="dq" placeholder="Ex. : Daft Punk Discovery" style="flex:1;min-width:0">
       <button id="dGo" class="primary">Rechercher</button>
     </div>
+    <div class="row" style="margin-top:8px"><button id="scanBtn">Scanner le code-barres</button></div>
+    <div id="scanBox"></div>
     <div id="dRes" class="results"></div>
     <div class="row">${mode !== "cote" ? '<button id="manualBtn">Saisir à la main</button>' : ""}<span class="spacer"></span><button id="closeBtn">Fermer</button></div>
     <div id="manual"></div>`;
-  $("#closeBtn").onclick = () => $("#dlg").close();
+  $("#closeBtn").onclick = async () => { await stopScan(); $("#dlg").close(); };
+  $("#dlg").onclose = stopScan;
   if ($("#manualBtn")) $("#manualBtn").onclick = () => showManualForm(M.wish);
+  let scanned = false;
+  const startScan = async () => {
+    $("#dRes").innerHTML = ""; $("#manual").innerHTML = "";
+    try {
+      const code = await scanBarcode($("#scanBox"));
+      if (!code) return;
+      scanned = true; $("#dq").value = code; go();
+    } catch (e) { toast(e.message); }
+  };
+  $("#scanBtn").onclick = startScan;
   const go = async () => {
     const q = $("#dq").value.trim(); if (!q) return;
     const barcode = /^[\d\s]{8,}$/.test(q) ? q.replace(/\s/g, "") : "";
     $("#dRes").innerHTML = '<div class="meta">Recherche sur Discogs...</div>';
     try {
       const res = await fn("discogsSearch", barcode ? { barcode } : { q });
-      if (!res.length) { $("#dRes").innerHTML = '<div class="meta">Aucun vinyle trouvé. Essaie d’autres mots, ou saisis-le à la main.</div>'; return; }
+      if (!res.length) {
+        $("#dRes").innerHTML = barcode
+          ? `<div class="note">Le code-barres ${esc(barcode)} est inconnu de Discogs. Cherche plutôt par artiste et album.</div>`
+          : '<div class="meta">Aucun vinyle trouvé. Essaie d’autres mots, ou saisis-le à la main.</div>';
+        return;
+      }
       $("#dRes").innerHTML = res.map((r, i) => `<div class="res">
           ${r.thumb ? `<img src="${esc(r.thumb)}" alt="">` : '<div class="noimg"></div>'}
           <div class="info"><b>${esc(r.artist)} - ${esc(r.album)}</b>
@@ -563,7 +626,13 @@ function openAddVinyl(mode) {
       $("#dRes").querySelectorAll("button").forEach(b => b.onclick = () => {
         const r = res[b.dataset.i];
         if (mode === "cote") return showCote(r);
-        addVinyl(Object.assign({ wish: M.wish }, r), b);
+        addVinyl(Object.assign({ wish: M.wish }, r), b).then(ok => {
+          if (!ok || !scanned) return;
+          // Saisie en série : on propose tout de suite le disque suivant.
+          $("#dRes").innerHTML = `<div class="done"><span>« ${esc(r.album)} » ajouté.</span><button id="nextScan" class="primary">Scanner le suivant</button></div>`;
+          $("#dq").value = "";
+          $("#nextScan").onclick = startScan;
+        });
       });
     } catch (e) { $("#dRes").innerHTML = `<div class="note">${esc(e.message)}</div>`; }
   };
@@ -600,7 +669,7 @@ function showManualForm(wish) {
 }
 
 async function addVinyl(item, btn) {
-  if (!item.artist || !item.album) return toast("Il faut au moins un artiste et un album.");
+  if (!item.artist || !item.album) { toast("Il faut au moins un artiste et un album."); return false; }
   btn.disabled = true; btn.textContent = "Ajout...";
   try {
     const a = {
@@ -620,7 +689,8 @@ async function addVinyl(item, btn) {
     renderGenres(); render();
     btn.textContent = "Ajouté";
     toast(`« ${a.album} » ajouté ${a.wish ? "à ta wishlist" : "à tes vinyles"}.`);
-  } catch (e) { btn.disabled = false; btn.textContent = "Ajouter"; toast(e.message); }
+    return true;
+  } catch (e) { btn.disabled = false; btn.textContent = "Ajouter"; toast(e.message); return false; }
 }
 
 // ---------- Démarrage ----------
