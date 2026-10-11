@@ -1,5 +1,5 @@
 // Phonotek : garde l'application et les pochettes en mémoire pour fonctionner sans réseau.
-const SHELL = "phonotek-shell-v1";
+const SHELL = "phonotek-shell-v2";
 const COVERS = "phonotek-covers-v1";
 const SHELL_FILES = ["./", "index.html", "manifest.webmanifest", "icon.svg", "icon-180.png", "icon-512.png",
   "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"];
@@ -20,7 +20,7 @@ self.addEventListener("fetch", e => {
       const hit = await c.match(e.request);
       if (hit) return hit;
       const res = await fetch(e.request);
-      if (res.ok) c.put(e.request, res.clone());
+      if (res.ok || res.type === "opaque") c.put(e.request, res.clone());
       return res;
     }));
     return;
@@ -32,4 +32,18 @@ self.addEventListener("fetch", e => {
       return res;
     }).catch(() => caches.match(e.request, { ignoreSearch: true })));
   }
+});
+
+// L'application envoie la liste des pochettes : on télécharge d'avance celles qui manquent.
+self.addEventListener("message", e => {
+  if (!e.data || e.data.type !== "precache") return;
+  e.waitUntil(caches.open(COVERS).then(async c => {
+    for (const url of e.data.urls) {
+      if (await c.match(url)) continue;
+      try {
+        const res = await fetch(url, { mode: "cors" });
+        if (res.ok) await c.put(url, res);
+      } catch (err) { /* réseau coupé : on réessaiera au prochain lancement */ }
+    }
+  }));
 });
