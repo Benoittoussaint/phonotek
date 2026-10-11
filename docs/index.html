@@ -103,7 +103,7 @@
   .login form { text-align: left; margin-top: 18px; }
   .login button { width: 100%; margin-top: 16px; }
   #reader { margin-top: 12px; border-radius: 12px; overflow: hidden; background: #000; }
-  #reader video { width: 100% !important; display: block; }
+  #reader video { width: 100%; max-height: 50vh; object-fit: cover; display: block; }
   .scanbar { display: flex; gap: 8px; align-items: center; margin-top: 8px; }
   .done { display: flex; gap: 8px; align-items: center; padding: 10px 12px; border-radius: 10px; background: var(--bg); border: 1px solid var(--line); }
   .done span { flex: 1; font-size: 14px; }
@@ -533,42 +533,63 @@ async function loadPrice(box, discogsId, album) {
 }
 
 // ---------- Scan du code-barres ----------
-const SCAN_LIB = "https://cdn.jsdelivr.net/npm/html5-qrcode@2.3.8/html5-qrcode.min.js";
-let scanner = null;
+// Moteur ZXing (via le module barcode-detector), plus fiable que les lecteurs de QR codes pour les EAN des disques.
+const SCAN_LIB = "https://cdn.jsdelivr.net/npm/barcode-detector@3.2.2/+esm";
+const SCAN_FORMATS = ["ean_13", "ean_8", "upc_a", "upc_e"];
+let scanStream = null, scanTimer = null;
 
-function loadScript(src) {
-  return new Promise((ok, ko) => {
-    if (document.querySelector(`script[src="${src}"]`)) return ok();
-    const el = document.createElement("script");
-    el.src = src; el.onload = ok; el.onerror = () => ko(new Error("Lecteur de code-barres indisponible (réseau ?)."));
-    document.head.appendChild(el);
-  });
+async function getDetector() {
+  if ("BarcodeDetector" in window) {
+    try {
+      const supported = await window.BarcodeDetector.getSupportedFormats();
+      if (SCAN_FORMATS.every(f => supported.includes(f))) return new window.BarcodeDetector({ formats: SCAN_FORMATS });
+    } catch (e) {}
+  }
+  const mod = await import(SCAN_LIB).catch(() => { throw new Error("Lecteur de code-barres indisponible (réseau ?)."); });
+  return new mod.BarcodeDetector({ formats: SCAN_FORMATS });
 }
 
-async function stopScan() {
-  if (!scanner) return;
-  try { await scanner.stop(); } catch (e) {}
-  try { scanner.clear(); } catch (e) {}
-  scanner = null;
+function stopScan() {
+  clearTimeout(scanTimer); scanTimer = null;
+  if (scanStream) scanStream.getTracks().forEach(t => t.stop());
+  scanStream = null;
 }
 
 // Ouvre l'appareil photo dans « box » et renvoie le code lu (ou null si annulé).
 async function scanBarcode(box) {
-  await loadScript(SCAN_LIB);
-  box.innerHTML = `<div id="reader"></div><div class="scanbar"><span class="meta" style="margin:0;flex:1">Vise le code-barres au dos de la pochette.</span><button id="scanStop">Annuler</button></div>`;
-  const F = Html5QrcodeSupportedFormats;
-  scanner = new Html5Qrcode("reader", { formatsToSupport: [F.EAN_13, F.EAN_8, F.UPC_A, F.UPC_E], verbose: false });
-  return new Promise(async resolve => {
-    $("#scanStop").onclick = async () => { await stopScan(); box.innerHTML = ""; resolve(null); };
-    try {
-      await scanner.start({ facingMode: "environment" }, { fps: 10, qrbox: { width: 260, height: 130 } },
-        async code => { if (navigator.vibrate) navigator.vibrate(80); await stopScan(); box.innerHTML = ""; resolve(code); },
-        () => {});
-    } catch (e) {
-      await stopScan();
-      box.innerHTML = '<div class="note">Impossible d’ouvrir l’appareil photo. Autorise l’accès à la caméra pour Phonotek (Réglages, puis Safari, puis Appareil photo), puis réessaie.</div>';
-      resolve(null);
-    }
+  box.innerHTML = '<div class="meta">Préparation du lecteur...</div>';
+  const detector = await getDetector();
+  try {
+    scanStream = await navigator.mediaDevices.getUserMedia({ audio: false,
+      video: { facingMode: { ideal: "environment" }, width: { ideal: 1920 }, height: { ideal: 1080 } } });
+  } catch (e) {
+    box.innerHTML = '<div class="note">Impossible d’ouvrir l’appareil photo. Autorise l’accès à la caméra (Réglages, puis Safari, puis Appareil photo), puis réessaie.</div>';
+    return null;
+  }
+  box.innerHTML = `<div id="reader"><video id="scanVideo" playsinline muted autoplay></video></div>
+    <div class="scanbar"><span class="meta" style="margin:0;flex:1">Vise le code-barres, à 15 cm environ, bien à plat.</span><button id="scanStop">Annuler</button></div>`;
+  const video = $("#scanVideo");
+  video.srcObject = scanStream;
+  await video.play().catch(() => {});
+  return new Promise(resolve => {
+    let last = "", hits = 0;
+    const finish = code => { stopScan(); box.innerHTML = ""; resolve(code); };
+    $("#scanStop").onclick = () => finish(null);
+    const tick = async () => {
+      if (!scanStream) return;
+      try {
+        if (video.readyState >= 2) {
+          const found = (await detector.detect(video)).find(b => /^\d{8,14}$/.test(b.rawValue));
+          if (found) {
+            // Deux lectures identiques de suite : on évite les erreurs de lecture.
+            hits = found.rawValue === last ? hits + 1 : 1; last = found.rawValue;
+            if (hits >= 2) { if (navigator.vibrate) navigator.vibrate(80); return finish(last); }
+          }
+        }
+      } catch (e) {}
+      scanTimer = setTimeout(tick, 150);
+    };
+    tick();
   });
 }
 
@@ -593,7 +614,7 @@ function openAddVinyl(mode) {
     <div id="dRes" class="results"></div>
     <div class="row">${mode !== "cote" ? '<button id="manualBtn">Saisir à la main</button>' : ""}<span class="spacer"></span><button id="closeBtn">Fermer</button></div>
     <div id="manual"></div>`;
-  $("#closeBtn").onclick = async () => { await stopScan(); $("#dlg").close(); };
+  $("#closeBtn").onclick = () => { stopScan(); $("#dlg").close(); };
   $("#dlg").onclose = stopScan;
   if ($("#manualBtn")) $("#manualBtn").onclick = () => showManualForm(M.wish);
   let scanned = false;
