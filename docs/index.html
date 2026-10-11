@@ -187,6 +187,7 @@ const genreOf = a => a.genre || NO_GENRE;
 const tabOf = a => a.wish ? "Wishlist" : (a.support || "CD");
 const mine = a => a.owner === state.me;
 const nameOf = id => (state.profiles.find(p => p.id === id) || {}).name || "?";
+const deName = n => (/^[aeiouyhàâéèêëîïôûü]/i.test(n) ? "d’" : "de ") + n;
 const today = () => new Date().toISOString().slice(0, 10);
 const store = {
   get(k) { try { return JSON.parse(localStorage.getItem("phonotek." + k)); } catch (e) { return null; } },
@@ -289,7 +290,8 @@ function render() {
   const words = norm(state.q).split(/\s+/).filter(Boolean);
   const all = state.albums.filter(inView);
   const list = all.filter(a => (!state.genre || genreOf(a) === state.genre) &&
-    words.every(w => norm(a.artist + " " + a.album + " " + (a.genre || "")).includes(w)));
+    words.every(w => norm(a.artist + " " + a.album + " " + (a.genre || "") + " " +
+      (a.trackList || []).map(t => t.title).join(" ")).includes(w)));
   const by = state.sort;
   list.sort((x, y) => by === "added" ? (y.added || "").localeCompare(x.added || "")
     : by === "album" ? sortKey(x.album).localeCompare(sortKey(y.album))
@@ -369,7 +371,7 @@ function openAlbum(id) {
   const edit = mine(a);
   const img = a.cover ? `<img class="cover" src="${esc(a.cover)}" alt="">` : `<div class="cover ph">Pas de pochette</div>`;
   const metaBits = [a.support, a.tracks ? a.tracks + " pistes" : "", a.format, a.year, a.label, a.country,
-    "ajouté le " + a.added, edit ? "" : "collection de " + nameOf(a.owner)].filter(Boolean).map(esc).join(" · ");
+    "ajouté le " + a.added, edit ? "" : "collection " + deName(nameOf(a.owner))].filter(Boolean).map(esc).join(" · ");
   $("#dlgBody").innerHTML = `
     ${img}
     <div id="readBox"><h2>${esc(a.album)}</h2><div>${esc(a.artist)}</div><div class="meta">${esc(genreOf(a))}</div></div>
@@ -714,10 +716,38 @@ async function addVinyl(item, btn) {
   } catch (e) { btn.disabled = false; btn.textContent = "Ajouter"; toast(e.message); return false; }
 }
 
+// ---------- Morceau reconnu (raccourci Shazam) ----------
+// Le raccourci iOS ouvre Phonotek avec ?shazam=Artiste|Titre.
+function openShazam(raw) {
+  const [artist = "", title = ""] = raw.split("|").map(x => x.trim());
+  const nArtist = norm(artist), nTitle = norm(title).replace(/\s*\(.*?\)|\s*\[.*?\]/g, "").trim();
+  const sameArtist = a => nArtist && (norm(a.artist).includes(nArtist) || nArtist.includes(norm(a.artist)));
+  const hasTrack = a => (a.trackList || []).some(t => { const x = norm(t.title); return nTitle && (x.includes(nTitle) || nTitle.includes(x)); });
+  const owned = state.albums.filter(a => !a.missing && sameArtist(a) && hasTrack(a));
+  const others = state.albums.filter(a => !a.missing && sameArtist(a) && !owned.includes(a));
+  const line = a => `<div class="res" data-id="${a.id}" style="cursor:pointer">
+      ${a.cover ? `<img src="${esc(a.cover)}" alt="">` : '<div class="noimg"></div>'}
+      <div class="info"><b>${esc(a.album)}</b><span>${esc(a.artist)} · ${esc(a.wish ? "wishlist" : a.support)} ${esc(deName(nameOf(a.owner)))}</span></div></div>`;
+  $("#dlgBody").innerHTML = `
+    <h2>${esc(title || "Morceau reconnu")}</h2><div>${esc(artist)}</div>
+    <div class="meta" style="margin-top:14px"><b>${owned.length ? "Dans vos collections :" : "Ce morceau n’est dans aucune de vos collections."}</b></div>
+    <div class="results">${owned.map(line).join("")}</div>
+    ${others.length ? `<div class="meta"><b>Autres disques de cet artiste :</b></div><div class="results">${others.map(line).join("")}</div>` : ""}
+    <div class="row"><button id="shzDeezer">Écouter sur Deezer</button><button id="shzCote" class="primary">Cote et wishlist</button>
+      <span class="spacer"></span><button id="closeBtn" autofocus>Fermer</button></div>`;
+  $("#closeBtn").onclick = () => $("#dlg").close();
+  $("#shzDeezer").onclick = () => openDeezer(artist, title, "track");
+  $("#shzCote").onclick = () => { openAddVinyl("cote"); $("#dq").value = `${artist} ${title}`.trim(); $("#dGo").click(); };
+  $("#dlgBody").querySelectorAll(".res[data-id]").forEach(el => el.onclick = () => openAlbum(el.dataset.id));
+  $("#dlg").showModal();
+  history.replaceState(null, "", location.pathname);
+}
+
 // ---------- Démarrage ----------
 async function start() {
   const params = new URLSearchParams(location.search);
   if (params.get("q")) state.q = params.get("q");
+  const shazam = params.get("shazam");
   $("#q").value = state.q;
   const cache = store.get("cache");
   const prefs = store.get("prefs") || {};
@@ -743,6 +773,7 @@ async function start() {
   }
   if (!state.profiles.some(p => p.id === state.viewing)) state.viewing = state.me;
   showApp();
+  if (shazam) openShazam(shazam);
 }
 
 function savePrefs() { store.set("prefs", { tab: state.tab, sort: state.sort, viewing: state.viewing }); }
