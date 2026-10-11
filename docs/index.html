@@ -1,0 +1,668 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Phonotek</title>
+<meta name="theme-color" content="#f6f3ee" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#151412" media="(prefers-color-scheme: dark)">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Phonotek">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icon-180.png">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+<style>
+  :root {
+    --bg: #f6f3ee; --surface: #fffdf9; --text: #1d1b18; --muted: #6f6a62;
+    --line: #e4ded4; --accent: #b4461f; --accent-text: #fff; --shadow: 0 1px 3px rgba(0,0,0,.12);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #151412; --surface: #1f1d1a; --text: #f0ebe3; --muted: #a39c91;
+            --line: #34302b; --accent: #e0703f; --accent-text: #151412; --shadow: 0 1px 3px rgba(0,0,0,.5); }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+         font: 15px/1.4 -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif; }
+  header { position: sticky; top: 0; z-index: 5; background: var(--bg); border-bottom: 1px solid var(--line);
+           padding: 12px 16px 10px; padding-top: max(12px, env(safe-area-inset-top)); }
+  .top { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .logo { width: 30px; height: 30px; flex: none; }
+  h1 { margin: 0; font-size: 22px; letter-spacing: -.01em; }
+  #count { color: var(--muted); font-size: 13px; }
+  .who { margin-left: auto; font-size: 13px; color: var(--muted); display: flex; align-items: center; gap: 6px; }
+  .who select { padding: 5px 8px; font-size: 14px; }
+  .offline { font-size: 12px; color: var(--accent); }
+  .tools { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
+  input[type=search], input[type=email], input[type=password], select, input[type=text] {
+    font: inherit; color: var(--text); background: var(--surface); border: 1px solid var(--line);
+    border-radius: 10px; padding: 9px 12px; font-size: 16px; }
+  input[type=search] { flex: 1 1 220px; min-width: 0; }
+  button { font: inherit; border: 1px solid var(--line); background: var(--surface); color: var(--text);
+           border-radius: 10px; padding: 9px 14px; cursor: pointer; }
+  button.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-text); }
+  button:disabled { opacity: .5; cursor: wait; }
+  [hidden] { display: none !important; }
+  .tabs { display: flex; gap: 4px; margin-top: 10px; background: var(--line); border-radius: 10px; padding: 3px; max-width: 560px; }
+  .tabs button { flex: 1; border: 0; background: transparent; padding: 7px 6px; border-radius: 8px; font-weight: 600;
+                 color: var(--muted); font-size: 14px; white-space: nowrap; }
+  .tabs button.on { background: var(--surface); color: var(--text); box-shadow: var(--shadow); }
+  main { padding: 16px; padding-bottom: max(16px, env(safe-area-inset-bottom)); }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 18px 14px; }
+  @media (max-width: 500px) { .grid { grid-template-columns: repeat(2, 1fr); } }
+  .card { cursor: pointer; min-width: 0; }
+  .cover { aspect-ratio: 1; width: 100%; border-radius: 6px; background: var(--line); object-fit: cover;
+           display: block; box-shadow: var(--shadow); }
+  .ph { display: flex; align-items: center; justify-content: center; color: var(--muted); font-size: 12px; text-align: center; padding: 8px; }
+  .card .t { font-weight: 600; margin-top: 7px; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .card .a { color: var(--muted); font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .badge { display: inline-block; font-size: 11px; border: 1px solid var(--line); border-radius: 4px; padding: 0 5px; margin-right: 4px; color: var(--muted); }
+  .price { font-weight: 600; color: var(--accent); font-size: 13px; }
+  .group { grid-column: 1 / -1; font-size: 13px; font-weight: 700; color: var(--accent); border-bottom: 1px solid var(--line); padding-bottom: 4px; margin-top: 6px; }
+  .empty { color: var(--muted); text-align: center; padding: 60px 0; grid-column: 1 / -1; }
+  dialog { border: 0; border-radius: 16px; padding: 0; background: var(--surface); color: var(--text);
+           width: min(560px, calc(100vw - 24px)); max-height: calc(100vh - 32px); }
+  dialog::backdrop { background: rgba(0,0,0,.5); }
+  .dlg { padding: 18px; }
+  .dlg .cover { max-width: 300px; margin: 0 auto 14px; }
+  label { display: block; font-size: 12px; color: var(--muted); margin-top: 10px; }
+  label input[type=text], label input[type=email], label input[type=password], label select { width: 100%; margin-top: 3px; }
+  .meta { color: var(--muted); font-size: 13px; margin-top: 10px; }
+  .meta a { color: var(--accent); }
+  .row { display: flex; gap: 8px; margin-top: 16px; flex-wrap: wrap; }
+  .row .spacer { flex: 1; }
+  h2 { font-size: 18px; margin: 0 0 4px; }
+  .cands { display: grid; grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)); gap: 10px; margin-top: 12px; }
+  .cand { cursor: pointer; font-size: 11px; color: var(--muted); }
+  .cand img { width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: 4px; display: block; }
+  .results { margin-top: 12px; display: flex; flex-direction: column; gap: 8px; }
+  .res { display: flex; gap: 10px; align-items: center; padding: 8px; border: 1px solid var(--line); border-radius: 10px; }
+  .res img, .res .noimg { width: 56px; height: 56px; object-fit: cover; border-radius: 4px; flex: none; background: var(--line); }
+  .res .info { flex: 1; min-width: 0; }
+  .res .info b { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .res .info span { color: var(--muted); font-size: 12px; }
+  .note { background: var(--bg); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; font-size: 13px; margin-top: 12px; }
+  .pricebox, .tracks { margin-top: 14px; border-top: 1px solid var(--line); padding-top: 12px; font-size: 14px; }
+  .pricebox h3, .tracks h3 { font-size: 14px; margin: 0 0 6px; display: flex; align-items: center; gap: 8px; }
+  .tracks h3 .spacer { flex: 1; }
+  .pricebox .big { font-size: 20px; font-weight: 700; color: var(--accent); }
+  .pricebox table { border-collapse: collapse; margin-top: 6px; font-size: 13px; }
+  .pricebox td { padding: 2px 12px 2px 0; }
+  .shops { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+  .shops a { font-size: 13px; border: 1px solid var(--line); border-radius: 8px; padding: 5px 10px; color: var(--text); text-decoration: none; }
+  .trk { display: flex; align-items: center; gap: 8px; padding: 5px 0; border-bottom: 1px solid var(--line); }
+  .trk .num { width: 28px; color: var(--muted); font-variant-numeric: tabular-nums; flex: none; }
+  .trk .ttl { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .trk button, .tracks h3 button { font-size: 12px; padding: 4px 8px; border-radius: 7px; }
+  .panel { max-width: 520px; margin: 0 auto; }
+  .panel section { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 16px; margin-bottom: 14px; }
+  .panel h3 { margin: 0 0 6px; font-size: 16px; }
+  .login { max-width: 360px; margin: 12vh auto 0; padding: 0 16px; text-align: center; }
+  .login .logo { width: 72px; height: 72px; }
+  .login form { text-align: left; margin-top: 18px; }
+  .login button { width: 100%; margin-top: 16px; }
+  #toast { position: fixed; left: 50%; bottom: max(20px, env(safe-area-inset-bottom)); transform: translateX(-50%); background: var(--text); color: var(--bg);
+           padding: 10px 16px; border-radius: 10px; font-size: 14px; display: none; max-width: calc(100vw - 32px); z-index: 20; }
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="logo" viewBox="0 0 100 100">
+    <circle cx="44" cy="54" r="38" fill="#141414"/>
+    <circle cx="44" cy="54" r="13" fill="#c8331f"/>
+    <circle cx="44" cy="54" r="2.2" fill="#141414"/>
+    <rect x="80" y="10" width="7" height="50" rx="2" fill="#9a9a9a" transform="rotate(18 83 12)"/>
+  </symbol>
+</svg>
+
+<div id="loginView" class="login" hidden>
+  <svg class="logo"><use href="#logo"/></svg>
+  <h1>Phonotek</h1>
+  <div class="meta">Connecte-toi pour accéder à ta collection.</div>
+  <form id="loginForm">
+    <label>E-mail<input type="email" id="lEmail" autocomplete="username" required></label>
+    <label>Mot de passe<input type="password" id="lPass" autocomplete="current-password" required></label>
+    <button class="primary" type="submit">Se connecter</button>
+  </form>
+</div>
+
+<div id="appView" hidden>
+  <header>
+    <div class="top">
+      <svg class="logo"><use href="#logo"/></svg>
+      <h1>Phonotek</h1><span id="count"></span><span id="offline" class="offline" hidden>hors ligne</span>
+      <div class="who">Univers de <select id="viewing"></select></div>
+    </div>
+    <div class="tabs" id="tabs">
+      <button data-tab="CD">CD</button>
+      <button data-tab="Vinyle">Vinyles</button>
+      <button data-tab="Wishlist">Wishlist</button>
+      <button data-tab="Moi">Moi</button>
+    </div>
+    <div class="tools" id="tools">
+      <input type="search" id="q" placeholder="Rechercher un artiste, un album, un style..." autocomplete="off">
+      <select id="genre"></select>
+      <select id="sort">
+        <option value="artist">Par artiste</option>
+        <option value="genre">Par style</option>
+        <option value="album">Par album</option>
+        <option value="added">Derniers ajouts</option>
+      </select>
+      <button id="addBtn" class="primary">Ajouter un vinyle</button>
+    </div>
+  </header>
+  <main><div id="grid" class="grid"></div><div id="panel" class="panel" hidden></div></main>
+</div>
+
+<dialog id="dlg"><div class="dlg" id="dlgBody"></div></dialog>
+<div id="toast"></div>
+
+<script>
+const SUPABASE_URL = "https://ugasyhsxwabairtzihvb.supabase.co";
+const SUPABASE_KEY = "sb_publishable_LxZwfOOwNefFS9rejT-JiA_Dv6vHKH5";   // clé publique, faite pour être dans l'application
+const EVERSOLO = "http://192.168.1.91:9529";
+const db = window.supabase ? window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY) : null;
+
+const state = { me: null, albums: [], profiles: [], viewing: null, tab: "CD", q: "", sort: "artist", genre: "" };
+const NO_GENRE = "Style inconnu";
+const BASE_GENRES = ["Rap / Hip-hop", "Rap français", "Rock", "Pop", "Jazz", "Blues", "Reggae", "Soul / Funk",
+  "Électro", "Chanson française", "Musiques du monde", "Classique", "Bande originale"];
+const TAB_NAMES = { CD: "CD", Vinyle: "Vinyles", Wishlist: "Wishlist" };
+const CONDITIONS = [["Mint (M)", "Neuf (M)"], ["Near Mint (NM or M-)", "Quasi neuf (NM)"],
+  ["Very Good Plus (VG+)", "Très bon (VG+)"], ["Very Good (VG)", "Bon (VG)"], ["Good Plus (G+)", "Correct (G+)"]];
+const isIOS = /iPhone|iPad|iPod/.test(navigator.userAgent);
+
+const $ = s => document.querySelector(s);
+const norm = s => (s || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
+const sortKey = s => norm(s).replace(/^(the|les|le|la|l')\s+/, "");
+const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const euros = v => v == null ? "" : v.toLocaleString("fr-FR", { style: "currency", currency: "EUR" });
+const genreOf = a => a.genre || NO_GENRE;
+const tabOf = a => a.wish ? "Wishlist" : (a.support || "CD");
+const mine = a => a.owner === state.me;
+const nameOf = id => (state.profiles.find(p => p.id === id) || {}).name || "?";
+const today = () => new Date().toISOString().slice(0, 10);
+const store = {
+  get(k) { try { return JSON.parse(localStorage.getItem("phonotek." + k)); } catch (e) { return null; } },
+  set(k, v) { try { localStorage.setItem("phonotek." + k, JSON.stringify(v)); } catch (e) {} },
+};
+
+function toast(msg) {
+  const t = $("#toast"); t.textContent = msg; t.style.display = "block";
+  clearTimeout(toast.timer); toast.timer = setTimeout(() => t.style.display = "none", 3500);
+}
+
+// ---------- Données ----------
+async function fn(action, payload = {}) {
+  if (!navigator.onLine) throw new Error("Pas de réseau : réessaie quand tu seras connecté.");
+  const { data, error } = await db.functions.invoke("phonotek-api", { body: Object.assign({ action }, payload) });
+  if (error) {
+    let msg = error.message;
+    try { msg = (await error.context.json()).error || msg; } catch (e) {}
+    throw new Error(msg);
+  }
+  return data;
+}
+
+function rowToAlbum(r) { return Object.assign({}, r.data, { id: r.id, owner: r.owner }); }
+function albumData(a) { const d = Object.assign({}, a); delete d.id; delete d.owner; return d; }
+
+async function loadAll() {
+  const [albums, profiles] = await Promise.all([
+    db.from("albums").select("id,owner,data").limit(10000),
+    db.from("profiles").select("id,name"),
+  ]);
+  if (albums.error) throw albums.error;
+  state.albums = albums.data.map(rowToAlbum);
+  state.profiles = profiles.data || [];
+  store.set("cache", { me: state.me, albums: state.albums, profiles: state.profiles });
+}
+
+async function saveAlbum(a) {
+  if (!navigator.onLine) throw new Error("Pas de réseau : la modification n’a pas été enregistrée.");
+  const { error } = await db.from("albums").update({ data: albumData(a) }).eq("id", a.id);
+  if (error) throw new Error(error.message);
+  store.set("cache", { me: state.me, albums: state.albums, profiles: state.profiles });
+}
+
+// ---------- Affichage ----------
+function showApp() {
+  $("#loginView").hidden = true; $("#appView").hidden = false;
+  $("#viewing").innerHTML = state.profiles.map(p => `<option value="${p.id}"${p.id === state.viewing ? " selected" : ""}>${esc(p.name)}</option>`).join("");
+  renderGenres(); render();
+}
+
+function inView(a) { return !a.missing && a.owner === state.viewing && tabOf(a) === state.tab; }
+
+function renderGenres() {
+  const counts = {};
+  state.albums.filter(inView).forEach(a => counts[genreOf(a)] = (counts[genreOf(a)] || 0) + 1);
+  const names = Object.keys(counts).sort((x, y) => x === NO_GENRE ? 1 : y === NO_GENRE ? -1 : x.localeCompare(y, "fr"));
+  if (state.genre && !counts[state.genre]) state.genre = "";
+  $("#genre").innerHTML = '<option value="">Tous les styles</option>' +
+    names.map(n => `<option value="${esc(n)}"${n === state.genre ? " selected" : ""}>${esc(n)} (${counts[n]})</option>`).join("");
+}
+
+function genreOptions(current) {
+  const names = [...new Set([...BASE_GENRES, ...state.albums.map(a => a.genre).filter(Boolean)])].sort((x, y) => x.localeCompare(y, "fr"));
+  return (current ? "" : `<option value="" selected>${NO_GENRE}</option>`) +
+    names.map(n => `<option${n === current ? " selected" : ""}>${esc(n)}</option>`).join("") +
+    '<option value="__new">Nouveau style...</option>';
+}
+
+function bindGenreSelect(sel, fallback) {
+  sel.onchange = () => {
+    if (sel.value !== "__new") return;
+    const name = (prompt("Nom du nouveau style :") || "").trim();
+    sel.innerHTML = genreOptions(name || fallback);
+    if (name && ![...sel.options].some(o => o.value === name)) sel.insertAdjacentHTML("afterbegin", `<option selected>${esc(name)}</option>`);
+  };
+}
+
+function render() {
+  const isMe = state.viewing === state.me;
+  document.querySelectorAll("#tabs button").forEach(b => {
+    b.classList.toggle("on", b.dataset.tab === state.tab);
+    if (b.dataset.tab === "Moi") return;
+    const n = state.albums.filter(a => !a.missing && a.owner === state.viewing && tabOf(a) === b.dataset.tab).length;
+    b.textContent = TAB_NAMES[b.dataset.tab] + " (" + n + ")";
+  });
+  $("#offline").hidden = navigator.onLine;
+  if (state.tab === "Moi") { $("#tools").hidden = true; $("#grid").hidden = true; $("#count").textContent = ""; return renderMe(); }
+  $("#tools").hidden = false; $("#grid").hidden = false; $("#panel").hidden = true;
+  $("#addBtn").hidden = state.tab === "CD" || !isMe;
+  $("#addBtn").textContent = state.tab === "Wishlist" ? "Ajouter à la wishlist" : "Ajouter un vinyle";
+
+  const words = norm(state.q).split(/\s+/).filter(Boolean);
+  const all = state.albums.filter(inView);
+  const list = all.filter(a => (!state.genre || genreOf(a) === state.genre) &&
+    words.every(w => norm(a.artist + " " + a.album + " " + (a.genre || "")).includes(w)));
+  const by = state.sort;
+  list.sort((x, y) => by === "added" ? (y.added || "").localeCompare(x.added || "")
+    : by === "album" ? sortKey(x.album).localeCompare(sortKey(y.album))
+    : by === "genre" ? (genreOf(x) === NO_GENRE) - (genreOf(y) === NO_GENRE) || genreOf(x).localeCompare(genreOf(y), "fr")
+        || sortKey(x.artist).localeCompare(sortKey(y.artist)) || sortKey(x.album).localeCompare(sortKey(y.album))
+    : sortKey(x.artist).localeCompare(sortKey(y.artist)) || sortKey(x.album).localeCompare(sortKey(y.album)));
+  const unit = state.tab === "CD" ? "CD" : state.tab === "Wishlist" ? (all.length > 1 ? "envies" : "envie") : (all.length > 1 ? "vinyles" : "vinyle");
+  $("#count").textContent = (list.length === all.length ? all.length : list.length + " sur " + all.length) + " " + unit;
+
+  if (!list.length) {
+    const who = isMe ? "" : nameOf(state.viewing) + " n’a ";
+    $("#grid").innerHTML = `<div class="empty">${all.length ? "Aucun disque trouvé."
+      : state.tab === "Wishlist" ? (isMe ? "Ta wishlist est vide.<br>Clique sur « Ajouter à la wishlist »." : esc(nameOf(state.viewing)) + " n’a rien dans sa wishlist.")
+      : state.tab === "Vinyle" ? (isMe ? "Aucun vinyle pour l’instant.<br>Clique sur « Ajouter un vinyle »." : esc(who) + "pas encore de vinyle.")
+      : (isMe ? "Aucun CD." : esc(who) + "pas de CD.")}</div>`;
+    return;
+  }
+  let html = "", last = null;
+  for (const a of list) {
+    if (by === "genre") {
+      if (genreOf(a) !== last) { html += `<div class="group">${esc(genreOf(a))}</div>`; last = genreOf(a); }
+    } else if (by !== "added") {
+      const letter = (sortKey(by === "album" ? a.album : a.artist)[0] || "#").toUpperCase();
+      const g = /[A-Z]/.test(letter) ? letter : "#";
+      if (g !== last) { html += `<div class="group">${g}</div>`; last = g; }
+    }
+    const img = a.cover ? `<img class="cover" loading="lazy" src="${esc(a.cover)}" alt="">` : `<div class="cover ph">${esc(a.album)}</div>`;
+    html += `<div class="card" data-id="${a.id}">${img}<div class="t">${esc(a.album)}</div>
+      <div class="a"><span class="badge">${esc(a.support)}</span>${esc(a.artist)}</div>
+      ${a.wish && a.price && a.price.lowest != null ? `<div class="price">dès ${euros(a.price.lowest)}</div>` : ""}</div>`;
+  }
+  $("#grid").innerHTML = html;
+}
+
+// ---------- Onglet Moi ----------
+function renderMe() {
+  const p = state.profiles.find(x => x.id === state.me) || { name: "" };
+  $("#panel").hidden = false;
+  $("#panel").innerHTML = `
+    <section><h3>Mon profil</h3>
+      <label>Prénom<input type="text" id="pName" value="${esc(p.name)}"></label>
+      <div class="row"><span class="spacer"></span><button id="pSave" class="primary">Enregistrer</button></div></section>
+    <section><h3>Ma wishlist</h3>
+      <div class="meta">${state.albums.filter(a => a.owner === state.me && a.wish).length} vinyle(s) que tu aimerais avoir.</div>
+      <div class="row"><button id="goWish">Voir ma wishlist</button><button id="coteBtn" class="primary">Chercher une cote</button></div></section>
+    <section><h3>Mettre à jour mes CD</h3>
+      <div class="meta">Les nouveaux albums de l’Eversolo sont ajoutés depuis le Mac : double-clique sur l’icône Phonotek du Bureau.</div></section>
+    <section><h3>Mot de passe</h3>
+      <label>Nouveau mot de passe<input type="password" id="pPass" autocomplete="new-password"></label>
+      <div class="row"><span class="spacer"></span><button id="pPassBtn">Changer le mot de passe</button></div></section>
+    <section><h3>Installer sur l’iPhone</h3>
+      <div class="meta">Dans Safari, touche le bouton Partager, puis « Sur l’écran d’accueil ». Phonotek s’ouvrira alors comme une application, même sans réseau.</div></section>
+    <div class="row"><span class="spacer"></span><button id="logout">Se déconnecter</button></div>`;
+  $("#pSave").onclick = async () => {
+    const name = $("#pName").value.trim(); if (!name) return;
+    const { error } = await db.from("profiles").upsert({ id: state.me, name });
+    if (error) return toast(error.message);
+    const prof = state.profiles.find(x => x.id === state.me);
+    if (prof) prof.name = name; else state.profiles.push({ id: state.me, name });
+    showApp(); toast("Profil enregistré.");
+  };
+  $("#goWish").onclick = () => { state.viewing = state.me; state.tab = "Wishlist"; showApp(); };
+  $("#coteBtn").onclick = () => openAddVinyl("cote");
+  $("#pPassBtn").onclick = async () => {
+    const pw = $("#pPass").value;
+    if (pw.length < 8) return toast("Choisis au moins 8 caractères.");
+    const { error } = await db.auth.updateUser({ password: pw });
+    toast(error ? error.message : "Mot de passe changé.");
+    $("#pPass").value = "";
+  };
+  $("#logout").onclick = async () => { await db.auth.signOut(); store.set("cache", null); location.reload(); };
+}
+
+// ---------- Fiche album ----------
+function openAlbum(id) {
+  const a = state.albums.find(x => x.id === id);
+  const edit = mine(a);
+  const img = a.cover ? `<img class="cover" src="${esc(a.cover)}" alt="">` : `<div class="cover ph">Pas de pochette</div>`;
+  const metaBits = [a.support, a.tracks ? a.tracks + " pistes" : "", a.format, a.year, a.label, a.country,
+    "ajouté le " + a.added, edit ? "" : "collection de " + nameOf(a.owner)].filter(Boolean).map(esc).join(" · ");
+  $("#dlgBody").innerHTML = `
+    ${img}
+    ${edit ? `
+      <label>Artiste<input type="text" id="fArtist" value="${esc(a.artist)}"></label>
+      <label>Album<input type="text" id="fAlbum" value="${esc(a.album)}"></label>
+      <label>Style<select id="fGenre">${genreOptions(a.genre)}</select></label>`
+    : `<h2>${esc(a.album)}</h2><div>${esc(a.artist)}</div><div class="meta">${esc(genreOf(a))}</div>`}
+    <div class="meta">${metaBits}
+      ${a.discogsId ? ` · <a href="https://www.discogs.com/release/${a.discogsId}" target="_blank" rel="noopener">voir sur Discogs</a>` : ""}</div>
+    <div class="row">
+      ${edit ? '<button id="coverBtn">Changer la pochette</button>' : ""}
+      ${edit && a.wish ? '<button id="boughtBtn">Je l’ai acheté</button>' : ""}
+      ${edit && a.source !== "eversolo" ? '<button id="delBtn">Supprimer</button>' : ""}
+      <span class="spacer"></span>
+      <button id="closeBtn">Fermer</button>
+      ${edit ? '<button id="saveBtn" class="primary">Enregistrer</button>' : ""}
+    </div>
+    <div id="cands"></div>
+    <div id="tracks" class="tracks"></div>
+    ${a.support === "Vinyle" ? '<div id="priceBox" class="pricebox"></div>' : ""}`;
+  $("#closeBtn").onclick = () => $("#dlg").close();
+  if (edit) {
+    bindGenreSelect($("#fGenre"), a.genre);
+    $("#coverBtn").onclick = () => searchCovers(a);
+    $("#saveBtn").onclick = async () => {
+      const before = Object.assign({}, a);
+      Object.assign(a, { artist: $("#fArtist").value.trim() || a.artist, album: $("#fAlbum").value.trim() || a.album,
+                         genre: $("#fGenre").value || a.genre, edited: true });
+      try { await saveAlbum(a); renderGenres(); render(); $("#dlg").close(); toast("Album mis à jour."); }
+      catch (e) { Object.assign(a, before); toast(e.message); }
+    };
+    if ($("#boughtBtn")) $("#boughtBtn").onclick = async () => {
+      a.wish = false; a.added = today();
+      try { await saveAlbum(a); renderGenres(); render(); $("#dlg").close(); toast(`« ${a.album} » est passé dans tes vinyles.`); }
+      catch (e) { a.wish = true; toast(e.message); }
+    };
+    if ($("#delBtn")) $("#delBtn").onclick = async () => {
+      if (!confirm(`Supprimer « ${a.album} » ${a.wish ? "de ta wishlist" : "de ta collection"} ?`)) return;
+      const { error } = await db.from("albums").delete().eq("id", a.id);
+      if (error) return toast(error.message);
+      state.albums = state.albums.filter(x => x.id !== a.id);
+      renderGenres(); render(); $("#dlg").close(); toast("Disque supprimé.");
+    };
+  }
+  if ($("#priceBox")) loadPrice($("#priceBox"), a.discogsId, a);
+  loadTracks($("#tracks"), a);
+  $("#dlg").showModal();
+}
+
+async function searchCovers(a) {
+  const box = $("#cands");
+  box.innerHTML = '<div class="meta">Recherche de pochettes...</div>';
+  try {
+    const cands = await fn("coverSearch", { q: ($("#fArtist").value + " " + $("#fAlbum").value).trim() });
+    if (!cands.length) { box.innerHTML = '<div class="meta">Aucune pochette trouvée. Corrige l’artiste ou l’album puis réessaie.</div>'; return; }
+    box.innerHTML = '<div class="meta">Touche la bonne pochette :</div><div class="cands">' +
+      cands.map((c, i) => `<div class="cand" data-i="${i}"><img src="${esc(c.thumb)}" alt="">${esc(c.source)} · ${esc(c.label)}</div>`).join("") + "</div>";
+    box.querySelectorAll(".cand").forEach(el => el.onclick = async () => {
+      box.innerHTML = '<div class="meta">Enregistrement de la pochette...</div>';
+      try {
+        const data = await fn("setCover", { albumId: a.id, url: cands[el.dataset.i].url });
+        Object.assign(a, data); render(); openAlbum(a.id); toast("Pochette remplacée.");
+      } catch (e) { box.innerHTML = `<div class="meta">${esc(e.message)}</div>`; }
+    });
+  } catch (e) { box.innerHTML = `<div class="meta">${esc(e.message)}</div>`; }
+}
+
+// ---------- Titres, Eversolo, Deezer ----------
+function devicePath(folder, file) {
+  const [first, ...rest] = folder.split("/");
+  const root = first === "Storage" ? "/storage/emulated/0" : "/storage/" + first;
+  return [root, ...rest, file].join("/");
+}
+
+function playOnEversolo(a, t) {
+  // L'Eversolo ne parle qu'en http sur le réseau de la maison : on ouvre sa commande dans un nouvel onglet.
+  const url = `${EVERSOLO}/ZidooFileControl/openFile?type=0&path=${encodeURIComponent(devicePath(a.folder, t.file))}`;
+  window.open(url, "_blank");
+  toast(`« ${t.title} » envoyé à l’Eversolo (à la maison uniquement).`);
+}
+
+async function openDeezer(artist, title, kind) {
+  const win = isIOS ? null : window.open("", "_blank");
+  try {
+    const r = await fn("deezer", { artist, title, kind });
+    if (isIOS) location.href = `deezer://www.deezer.com/${r.kind}/${r.id}`;
+    else win.location = r.link;
+  } catch (e) { if (win) win.close(); toast(e.message); }
+}
+
+async function loadTracks(box, a) {
+  let tracks = a.trackList;
+  if (!tracks || !tracks.length) {
+    if (!a.discogsId) { box.innerHTML = ""; return; }
+    box.innerHTML = '<div class="meta">Chargement des titres...</div>';
+    try {
+      tracks = await fn("discogsTracks", { id: a.discogsId });
+      if (mine(a)) { a.trackList = tracks; saveAlbum(a).catch(() => {}); }
+    } catch (e) { box.innerHTML = `<div class="meta">${esc(e.message)}</div>`; return; }
+  }
+  if (!tracks.length) { box.innerHTML = ""; return; }
+  const onEversolo = a.source === "eversolo" && a.folder && mine(a);
+  box.innerHTML = `<h3>Titres <span class="spacer"></span><button id="albumDeezer">Album sur Deezer</button></h3>` +
+    tracks.map(t => `<div class="trk"><span class="num">${esc(t.pos || t.n)}</span><span class="ttl">${esc(t.title)}</span>
+      ${onEversolo && t.file ? `<button data-ev="${t.n}">Eversolo</button>` : ""}<button data-dz="${t.n}">Deezer</button></div>`).join("");
+  $("#albumDeezer").onclick = () => openDeezer(a.artist, a.album, "album");
+  box.querySelectorAll("[data-ev]").forEach(b => b.onclick = () => playOnEversolo(a, tracks.find(t => t.n == b.dataset.ev)));
+  box.querySelectorAll("[data-dz]").forEach(b => b.onclick = () => openDeezer(a.artist, tracks.find(t => t.n == b.dataset.dz).title, "track"));
+}
+
+// ---------- Prix ----------
+function shopLinks(artist, album) {
+  const q = encodeURIComponent(`${artist} ${album}`.trim());
+  const qv = encodeURIComponent(`${artist} ${album} vinyle`.trim());
+  const shops = [
+    ["eBay", `https://www.ebay.fr/sch/i.html?_nkw=${qv}`],
+    ["CDandLP", `https://www.cdandlp.com/search/?q=${q}`],
+    ["HHV", `https://www.hhv.de/katalog/filter/suche-S11?af=true&term=${q}`],
+    ["Leboncoin", `https://www.leboncoin.fr/recherche?text=${qv}`],
+    ["Vinted", `https://www.vinted.fr/catalog?search_text=${qv}`],
+    ["Fnac", `https://www.fnac.com/SearchResult/ResultList.aspx?Search=${qv}`],
+    ["Cultura", `https://www.cultura.com/search/results?search_query=${qv}`],
+    ["Amazon", `https://www.amazon.fr/s?k=${qv}`],
+  ];
+  return '<div class="shops">' + shops.map(([n, u]) => `<a href="${u}" target="_blank" rel="noopener">${n}</a>`).join("") + "</div>";
+}
+
+function priceHtml(p) {
+  let html = "<h3>Sur Discogs</h3>";
+  html += p.numForSale
+    ? `<div><span class="big">dès ${euros(p.lowest)}</span> · ${p.numForSale} exemplaire${p.numForSale > 1 ? "s" : ""} en vente</div>`
+    : "<div>Aucun exemplaire en vente sur Discogs en ce moment.</div>";
+  if (p.suggestions) {
+    html += "<div class='meta'>Cote selon l’état :</div><table>" + CONDITIONS.filter(([k]) => p.suggestions[k] != null)
+      .map(([k, fr]) => `<tr><td>${fr}</td><td><b>${euros(p.suggestions[k])}</b></td></tr>`).join("") + "</table>";
+  } else {
+    html += "<div class='meta'>Cote par état indisponible : remplis tes paramètres vendeur sur Discogs pour l’afficher.</div>";
+  }
+  if (p.have != null) html += `<div class="meta">${p.have} membres l’ont, ${p.want} le recherchent.${p.checked ? " Prix du " + esc(p.checked) + "." : ""}</div>`;
+  return html + `<div class="shops"><a href="${esc(p.sellUrl)}" target="_blank" rel="noopener">Voir les offres Discogs</a></div>`;
+}
+
+async function loadPrice(box, discogsId, album) {
+  const links = `<h3>Chercher ailleurs</h3>${shopLinks(album.artist, album.album)}`;
+  if (!discogsId) { box.innerHTML = links + '<div class="meta">Pas de fiche Discogs pour ce disque.</div>'; return; }
+  if (!navigator.onLine && album.price) { box.innerHTML = priceHtml(album.price) + links; return; }
+  box.innerHTML = '<div class="meta">Recherche des prix sur Discogs...</div>';
+  try {
+    const p = await fn("discogsPrice", { id: discogsId });
+    if (album.id && mine(album)) { album.price = p; saveAlbum(album).then(render).catch(() => {}); }
+    box.innerHTML = priceHtml(p) + links;
+  } catch (e) {
+    box.innerHTML = (album.price ? priceHtml(album.price) : "") + `<div class="note">${esc(e.message)}</div>` + links;
+  }
+}
+
+// ---------- Ajout de vinyles, wishlist, cote ----------
+const MODES = {
+  collection: { title: "Ajouter un vinyle", button: "Ajouter", wish: false },
+  wish: { title: "Ajouter à la wishlist", button: "Ajouter", wish: true },
+  cote: { title: "Chercher une cote", button: "Voir la cote" },
+};
+
+function openAddVinyl(mode) {
+  const M = MODES[mode];
+  $("#dlgBody").innerHTML = `
+    <h2>${M.title}</h2>
+    <div class="meta">Cherche par artiste et album, ou tape le code-barres (les chiffres sous le code).</div>
+    <div class="row" style="margin-top:10px">
+      <input type="search" id="dq" placeholder="Ex. : Daft Punk Discovery" style="flex:1;min-width:0">
+      <button id="dGo" class="primary">Rechercher</button>
+    </div>
+    <div id="dRes" class="results"></div>
+    <div class="row">${mode !== "cote" ? '<button id="manualBtn">Saisir à la main</button>' : ""}<span class="spacer"></span><button id="closeBtn">Fermer</button></div>
+    <div id="manual"></div>`;
+  $("#closeBtn").onclick = () => $("#dlg").close();
+  if ($("#manualBtn")) $("#manualBtn").onclick = () => showManualForm(M.wish);
+  const go = async () => {
+    const q = $("#dq").value.trim(); if (!q) return;
+    const barcode = /^[\d\s]{8,}$/.test(q) ? q.replace(/\s/g, "") : "";
+    $("#dRes").innerHTML = '<div class="meta">Recherche sur Discogs...</div>';
+    try {
+      const res = await fn("discogsSearch", barcode ? { barcode } : { q });
+      if (!res.length) { $("#dRes").innerHTML = '<div class="meta">Aucun vinyle trouvé. Essaie d’autres mots, ou saisis-le à la main.</div>'; return; }
+      $("#dRes").innerHTML = res.map((r, i) => `<div class="res">
+          ${r.thumb ? `<img src="${esc(r.thumb)}" alt="">` : '<div class="noimg"></div>'}
+          <div class="info"><b>${esc(r.artist)} - ${esc(r.album)}</b>
+            <span>${[r.year, r.country, r.label, r.format, r.genre].filter(Boolean).map(esc).join(" · ")}</span></div>
+          <button data-i="${i}">${M.button}</button></div>`).join("");
+      $("#dRes").querySelectorAll("button").forEach(b => b.onclick = () => {
+        const r = res[b.dataset.i];
+        if (mode === "cote") return showCote(r);
+        addVinyl(Object.assign({ wish: M.wish }, r), b);
+      });
+    } catch (e) { $("#dRes").innerHTML = `<div class="note">${esc(e.message)}</div>`; }
+  };
+  $("#dGo").onclick = go;
+  $("#dq").onkeydown = e => { if (e.key === "Enter") go(); };
+  $("#dlg").showModal();
+  $("#dq").focus();
+}
+
+function showCote(r) {
+  $("#manual").innerHTML = "";
+  $("#dRes").innerHTML = `<div class="res">${r.thumb ? `<img src="${esc(r.thumb)}" alt="">` : '<div class="noimg"></div>'}
+      <div class="info"><b>${esc(r.artist)} - ${esc(r.album)}</b><span>${[r.year, r.country, r.label, r.format].filter(Boolean).map(esc).join(" · ")}</span></div></div>
+    <div id="coteBox" class="pricebox"></div>
+    <div class="row"><button id="backBtn">Autre recherche</button><span class="spacer"></span>
+      <button id="wishAdd">Ajouter à la wishlist</button><button id="collAdd" class="primary">Je l’ai</button></div>`;
+  loadPrice($("#coteBox"), r.discogsId, { artist: r.artist, album: r.album });
+  $("#backBtn").onclick = () => { $("#dRes").innerHTML = ""; $("#dq").focus(); };
+  $("#wishAdd").onclick = e => addVinyl(Object.assign({ wish: true }, r), e.target);
+  $("#collAdd").onclick = e => addVinyl(Object.assign({ wish: false }, r), e.target);
+}
+
+function showManualForm(wish) {
+  $("#manual").innerHTML = `
+    <label>Artiste<input type="text" id="mArtist"></label>
+    <label>Album<input type="text" id="mAlbum"></label>
+    <label>Style<select id="mGenre">${genreOptions("")}</select></label>
+    <label>Année<input type="text" id="mYear" inputmode="numeric"></label>
+    <div class="row"><span class="spacer"></span><button id="mAdd" class="primary">Ajouter</button></div>`;
+  bindGenreSelect($("#mGenre"), "");
+  $("#mAdd").onclick = e => addVinyl({ artist: $("#mArtist").value.trim(), album: $("#mAlbum").value.trim(), wish,
+                                       genre: $("#mGenre").value, year: $("#mYear").value.trim() }, e.target);
+  $("#mArtist").focus();
+}
+
+async function addVinyl(item, btn) {
+  if (!item.artist || !item.album) return toast("Il faut au moins un artiste et un album.");
+  btn.disabled = true; btn.textContent = "Ajout...";
+  try {
+    const a = {
+      id: crypto.randomUUID().replace(/-/g, "").slice(0, 10), owner: state.me,
+      artist: item.artist, album: item.album, genre: item.genre || null, support: "Vinyle", wish: !!item.wish,
+      source: item.discogsId ? "discogs" : "manuel", discogsId: item.discogsId || null,
+      year: item.year || "", label: item.label || "", country: item.country || "", format: item.format || "",
+      added: today(), cover: null, coverSource: null,
+    };
+    if (!a.genre) { try { a.genre = (await fn("genre", { artist: a.artist, album: a.album })).genre; } catch (e) {} }
+    const { error } = await db.from("albums").insert({ id: a.id, owner: a.owner, data: albumData(a) });
+    if (error) throw new Error(error.message);
+    state.albums.push(a);
+    if (item.cover) { try { Object.assign(a, await fn("setCover", { albumId: a.id, url: item.cover })); a.coverSource = "discogs"; } catch (e) {} }
+    if (a.discogsId) { try { a.price = await fn("discogsPrice", { id: a.discogsId }); } catch (e) {} }
+    await saveAlbum(a);
+    renderGenres(); render();
+    btn.textContent = "Ajouté";
+    toast(`« ${a.album} » ajouté ${a.wish ? "à ta wishlist" : "à tes vinyles"}.`);
+  } catch (e) { btn.disabled = false; btn.textContent = "Ajouter"; toast(e.message); }
+}
+
+// ---------- Démarrage ----------
+async function start() {
+  const params = new URLSearchParams(location.search);
+  if (params.get("q")) state.q = params.get("q");
+  $("#q").value = state.q;
+  const cache = store.get("cache");
+  const prefs = store.get("prefs") || {};
+  state.tab = prefs.tab || "CD"; state.sort = prefs.sort || "artist"; $("#sort").value = state.sort;
+
+  if (!db) {   // hors ligne, bibliothèque Supabase indisponible : on affiche le cache
+    if (cache) { Object.assign(state, cache); state.viewing = prefs.viewing || cache.me; return showApp(); }
+    document.body.innerHTML = '<div class="login"><h1>Phonotek</h1><div class="meta">Pas de réseau, et rien en mémoire pour l’instant.</div></div>';
+    return;
+  }
+  const { data: { session } } = await db.auth.getSession();
+  if (!session) { $("#loginView").hidden = false; return; }
+  state.me = session.user.id;
+  state.viewing = prefs.viewing || state.me;
+  if (cache && cache.me === state.me) { Object.assign(state, { albums: cache.albums, profiles: cache.profiles }); showApp(); }
+  if (navigator.onLine) {
+    try { await loadAll(); } catch (e) { if (!cache) return toast("Chargement impossible : " + e.message); }
+  }
+  if (!state.profiles.some(p => p.id === state.me)) {
+    const name = (prompt("Bienvenue ! Quel est ton prénom ?") || "").trim() || session.user.email.split("@")[0];
+    await db.from("profiles").upsert({ id: state.me, name });
+    state.profiles.push({ id: state.me, name });
+  }
+  if (!state.profiles.some(p => p.id === state.viewing)) state.viewing = state.me;
+  showApp();
+}
+
+function savePrefs() { store.set("prefs", { tab: state.tab, sort: state.sort, viewing: state.viewing }); }
+
+$("#loginForm").onsubmit = async e => {
+  e.preventDefault();
+  const { error } = await db.auth.signInWithPassword({ email: $("#lEmail").value.trim(), password: $("#lPass").value });
+  if (error) return toast("Connexion refusée : vérifie l’e-mail et le mot de passe.");
+  location.reload();
+};
+$("#tabs").onclick = e => {
+  const b = e.target.closest("button"); if (!b) return;
+  state.tab = b.dataset.tab; state.genre = ""; savePrefs(); renderGenres(); render(); window.scrollTo(0, 0);
+};
+$("#viewing").onchange = e => { state.viewing = e.target.value; state.genre = ""; if (state.tab === "Moi") state.tab = "Vinyle"; savePrefs(); renderGenres(); render(); };
+$("#grid").onclick = e => { const c = e.target.closest(".card"); if (c) openAlbum(c.dataset.id); };
+$("#q").oninput = e => { state.q = e.target.value; render(); };
+$("#genre").onchange = e => { state.genre = e.target.value; render(); };
+$("#sort").onchange = e => { state.sort = e.target.value; savePrefs(); render(); };
+$("#addBtn").onclick = () => openAddVinyl(state.tab === "Wishlist" ? "wish" : "collection");
+window.addEventListener("online", render);
+window.addEventListener("offline", render);
+if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});
+start();
+</script>
+</body>
+</html>

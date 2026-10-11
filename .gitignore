@@ -1,0 +1,7 @@
+# Données personnelles et fichiers locaux : jamais publiés
+data/
+web/covers/
+.mnt/
+__pycache__/
+.DS_Store
+.claude/
