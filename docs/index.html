@@ -367,20 +367,20 @@ function openAlbum(id) {
     "ajouté le " + a.added, edit ? "" : "collection de " + nameOf(a.owner)].filter(Boolean).map(esc).join(" · ");
   $("#dlgBody").innerHTML = `
     ${img}
-    ${edit ? `
+    <div id="readBox"><h2>${esc(a.album)}</h2><div>${esc(a.artist)}</div><div class="meta">${esc(genreOf(a))}</div></div>
+    ${edit ? `<div id="editBox" hidden>
       <label>Artiste<input type="text" id="fArtist" value="${esc(a.artist)}"></label>
       <label>Album<input type="text" id="fAlbum" value="${esc(a.album)}"></label>
-      <label>Style<select id="fGenre">${genreOptions(a.genre)}</select></label>`
-    : `<h2>${esc(a.album)}</h2><div>${esc(a.artist)}</div><div class="meta">${esc(genreOf(a))}</div>`}
+      <label>Style<select id="fGenre">${genreOptions(a.genre)}</select></label></div>` : ""}
     <div class="meta">${metaBits}
       ${a.discogsId ? ` · <a href="https://www.discogs.com/release/${a.discogsId}" target="_blank" rel="noopener">voir sur Discogs</a>` : ""}</div>
     <div class="row">
-      ${edit ? '<button id="coverBtn">Changer la pochette</button>' : ""}
+      ${edit ? '<button id="editBtn">Modifier</button><button id="coverBtn">Changer la pochette</button>' : ""}
       ${edit && a.wish ? '<button id="boughtBtn">Je l’ai acheté</button>' : ""}
       ${edit && a.source !== "eversolo" ? '<button id="delBtn">Supprimer</button>' : ""}
       <span class="spacer"></span>
-      <button id="closeBtn">Fermer</button>
-      ${edit ? '<button id="saveBtn" class="primary">Enregistrer</button>' : ""}
+      <button id="closeBtn" autofocus>Fermer</button>
+      ${edit ? '<button id="saveBtn" class="primary" hidden>Enregistrer</button>' : ""}
     </div>
     <div id="cands"></div>
     <div id="tracks" class="tracks"></div>
@@ -388,6 +388,10 @@ function openAlbum(id) {
   $("#closeBtn").onclick = () => $("#dlg").close();
   if (edit) {
     bindGenreSelect($("#fGenre"), a.genre);
+    $("#editBtn").onclick = () => {
+      $("#readBox").hidden = true; $("#editBox").hidden = false;
+      $("#saveBtn").hidden = false; $("#editBtn").hidden = true;
+    };
     $("#coverBtn").onclick = () => searchCovers(a);
     $("#saveBtn").onclick = async () => {
       const before = Object.assign({}, a);
