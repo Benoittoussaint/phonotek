@@ -64,6 +64,7 @@
   dialog { border: 0; border-radius: 16px; padding: 0; background: var(--surface); color: var(--text);
            width: min(560px, calc(100vw - 24px)); max-height: calc(100vh - 32px); max-height: calc(100dvh - 24px);
            overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; }
+  #dlgBody:focus { outline: none; }
   .dlgbar { position: sticky; top: 0; z-index: 2; display: flex; justify-content: flex-end; padding: 8px 10px 0;
             background: linear-gradient(var(--surface) 70%, transparent); }
   .dlgbar button { font-size: 14px; padding: 6px 12px; }
@@ -166,7 +167,7 @@
   <main><div id="grid" class="grid"></div><div id="panel" class="panel" hidden></div></main>
 </div>
 
-<dialog id="dlg"><div class="dlgbar"><button id="dlgClose" type="button">Fermer</button></div><div class="dlg" id="dlgBody"></div></dialog>
+<dialog id="dlg"><div class="dlgbar"><button id="dlgClose" type="button">Fermer</button></div><div class="dlg" id="dlgBody" tabindex="-1" autofocus></div></dialog>
 <div id="toast"></div>
 
 <script>
@@ -781,6 +782,9 @@ function openDialog() {
     document.body.classList.add("locked");
     dlg.showModal();
   }
+  // Safari place sinon le curseur dans le premier champ texte, ce qui ouvre le clavier.
+  $("#dlgBody").focus({ preventScroll: true });
+  if (document.activeElement && document.activeElement.matches("input, select, textarea")) document.activeElement.blur();
   dlg.scrollTop = 0;
 }
 $("#dlg").addEventListener("close", () => {
