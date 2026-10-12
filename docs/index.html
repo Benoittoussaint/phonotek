@@ -488,7 +488,11 @@ function devicePath(folder, file) {
 
 function playOnEversolo(a, t) {
   // L'Eversolo ne parle qu'en http sur le réseau de la maison : on ouvre sa commande dans un nouvel onglet.
-  const url = `${EVERSOLO}/ZidooFileControl/openFile?type=0&path=${encodeURIComponent(devicePath(a.folder, t.file))}`;
+  // De préférence depuis la bibliothèque de l'Eversolo : album complet dans l'ordre, affichage habituel.
+  // Sinon (album pas encore relié), on lance le fichier directement.
+  const url = a.eversoloAlbumId && t.eversoloId
+    ? `${EVERSOLO}/ZidooMusicControl/v2/playMusic?type=4&id=${a.eversoloAlbumId}&musicId=${t.eversoloId}&music_type=0&trackIndex=${t.n - 1}&sort=0`
+    : `${EVERSOLO}/ZidooFileControl/openFile?type=0&path=${encodeURIComponent(devicePath(a.folder, t.file))}`;
   const win = window.open(url, "_blank");
   // La page de réponse de l'Eversolo n'a aucun intérêt : on la referme dès que la commande est partie.
   setTimeout(() => { try { if (win) win.close(); } catch (e) {} }, 2000);
