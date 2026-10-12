@@ -396,7 +396,12 @@ function openAlbum(id) {
     ${edit ? `<div id="editBox" hidden>
       <label>Artiste<input type="text" id="fArtist" value="${esc(a.artist)}"></label>
       <label>Album<input type="text" id="fAlbum" value="${esc(a.album)}"></label>
-      <label>Style<select id="fGenre">${genreOptions(a.genre)}</select></label></div>` : ""}
+      <label>Style<select id="fGenre">${genreOptions(a.genre)}</select></label>
+      ${a.support === "Vinyle" && !a.wish ? `
+      <label>Prix payé (€)<input type="text" id="fPaid" inputmode="decimal" value="${a.purchase && a.purchase.price != null ? String(a.purchase.price).replace(".", ",") : ""}"></label>
+      <label>Acheté chez<input type="text" id="fShop" placeholder="Fnac, HHV, brocante..." value="${esc((a.purchase || {}).shop || "")}"></label>
+      <label>Date d’achat<input type="date" id="fBought" value="${esc((a.purchase || {}).date || "")}"></label>` : ""}</div>` : ""}
+    ${edit && a.purchase && a.purchase.price != null ? `<div class="meta" id="paidLine">${purchaseLine(a)}</div>` : ""}
     <div class="meta">${metaBits}
       ${a.discogsId ? ` · <a href="https://www.discogs.com/release/${a.discogsId}" target="_blank" rel="noopener">voir sur Discogs</a>` : ""}</div>
     <div class="row">
@@ -422,6 +427,11 @@ function openAlbum(id) {
       const before = Object.assign({}, a);
       Object.assign(a, { artist: $("#fArtist").value.trim() || a.artist, album: $("#fAlbum").value.trim() || a.album,
                          genre: $("#fGenre").value || a.genre, edited: true });
+      if ($("#fPaid")) {
+        const price = parseFloat($("#fPaid").value.replace(",", ".").replace(/[^\d.]/g, ""));
+        a.purchase = isNaN(price) && !$("#fShop").value.trim() && !$("#fBought").value ? null
+          : { price: isNaN(price) ? null : Math.round(price * 100) / 100, shop: $("#fShop").value.trim(), date: $("#fBought").value };
+      }
       try { await saveAlbum(a); renderGenres(); render(); $("#dlg").close(); toast("Album mis à jour."); }
       catch (e) { Object.assign(a, before); toast(e.message); }
     };
@@ -459,6 +469,14 @@ async function searchCovers(a) {
       } catch (e) { box.innerHTML = `<div class="meta">${esc(e.message)}</div>`; }
     });
   } catch (e) { box.innerHTML = `<div class="meta">${esc(e.message)}</div>`; }
+}
+
+function purchaseLine(a) {
+  const p = a.purchase || {};
+  const date = p.date ? " le " + new Date(p.date).toLocaleDateString("fr-FR") : "";
+  let line = `Acheté ${euros(p.price)}${p.shop ? " chez " + esc(p.shop) : ""}${date}`;
+  if (a.price && a.price.lowest != null) line += ` · aujourd’hui dès ${euros(a.price.lowest)} sur Discogs`;
+  return line;
 }
 
 // ---------- Titres, Eversolo, Deezer ----------
