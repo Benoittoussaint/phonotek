@@ -344,6 +344,13 @@ function renderMe() {
     <section><h3>Ma wishlist</h3>
       <div class="meta">${state.albums.filter(a => a.owner === state.me && a.wish).length} vinyle(s) que tu aimerais avoir.</div>
       <div class="row"><button id="goWish">Voir ma wishlist</button><button id="coteBtn" class="primary">Chercher une cote</button></div></section>
+    <section><h3>Bouton Shazam</h3>
+      <label>Sur cet iPhone, le bouton Shazam...
+        <select id="pShazam">
+          <option value="app"${shazamMode() === "app" ? " selected" : ""}>ouvre l’application Shazam</option>
+          <option value="raccourci"${shazamMode() === "raccourci" ? " selected" : ""}>lance le raccourci « Phonotek Shazam »</option>
+        </select></label>
+      <div class="meta">Le raccourci doit exister dans l’app Raccourcis de cet iPhone, avec exactement ce nom.</div></section>
     <section><h3>Mettre à jour mes CD</h3>
       <div class="meta">Les nouveaux albums de l’Eversolo sont ajoutés depuis le Mac : double-clique sur l’icône Phonotek du Bureau.</div></section>
     <section><h3>Mot de passe</h3>
@@ -359,6 +366,10 @@ function renderMe() {
     const prof = state.profiles.find(x => x.id === state.me);
     if (prof) prof.name = name; else state.profiles.push({ id: state.me, name });
     showApp(); toast("Profil enregistré.");
+  };
+  $("#pShazam").onchange = e => {
+    store.set("prefs", Object.assign(store.get("prefs") || {}, { shazam: e.target.value }));
+    toast("Réglage enregistré.");
   };
   $("#goWish").onclick = () => { state.viewing = state.me; state.tab = "Wishlist"; showApp(); };
   $("#coteBtn").onclick = () => openAddVinyl("cote");
@@ -752,7 +763,14 @@ function openShazam(raw) {
 // Ouvre l'application Shazam ; au retour dans Phonotek, la recherche est prête pour taper le titre.
 const SHAZAM_STORE = "https://apps.apple.com/fr/app/shazam/id284993459";
 let shazamLaunched = 0;
+const SHORTCUT_NAME = "Phonotek Shazam";
+const shazamMode = () => (store.get("prefs") || {}).shazam || "app";
 function launchShazam() {
+  if (shazamMode() === "raccourci") {
+    // Le raccourci reconnaît le morceau puis rouvre Phonotek sur le résultat.
+    location.href = "shortcuts://run-shortcut?name=" + encodeURIComponent(SHORTCUT_NAME);
+    return;
+  }
   shazamLaunched = Date.now();
   location.href = "shazam://";
   // Si Shazam n'est pas installé, la page reste affichée : on propose l'App Store.
@@ -830,7 +848,7 @@ async function start() {
   if (shazam) openShazam(shazam);
 }
 
-function savePrefs() { store.set("prefs", { tab: state.tab, sort: state.sort, viewing: state.viewing }); }
+function savePrefs() { store.set("prefs", Object.assign(store.get("prefs") || {}, { tab: state.tab, sort: state.sort, viewing: state.viewing })); }
 
 $("#loginForm").onsubmit = async e => {
   e.preventDefault();
