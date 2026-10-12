@@ -612,12 +612,12 @@ function openAddVinyl(mode) {
   const M = MODES[mode];
   $("#dlgBody").innerHTML = `
     <h2>${M.title}</h2>
-    <div class="meta">Cherche par artiste et album, ou tape le code-barres (les chiffres sous le code).</div>
-    <div class="row" style="margin-top:10px">
+    <div class="row" style="margin-top:12px"><button id="scanBtn" class="primary" style="flex:1">Scanner le code-barres</button></div>
+    <div class="meta" style="margin-top:16px">Ou cherche par artiste et album (ou les chiffres du code-barres) :</div>
+    <div class="row" style="margin-top:6px">
       <input type="search" id="dq" placeholder="Ex. : Daft Punk Discovery" style="flex:1;min-width:0">
-      <button id="dGo" class="primary">Rechercher</button>
+      <button id="dGo">Rechercher</button>
     </div>
-    <div class="row" style="margin-top:8px"><button id="scanBtn">Scanner le code-barres</button></div>
     <div id="scanBox"></div>
     <div id="dRes" class="results"></div>
     <div class="row">${mode !== "cote" ? '<button id="manualBtn">Saisir à la main</button>' : ""}<span class="spacer"></span><button id="closeBtn">Fermer</button></div>
@@ -667,7 +667,6 @@ function openAddVinyl(mode) {
   $("#dGo").onclick = go;
   $("#dq").onkeydown = e => { if (e.key === "Enter") go(); };
   openDialog();
-  $("#dq").focus();
 }
 
 function showCote(r) {
