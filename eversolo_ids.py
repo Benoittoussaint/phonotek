@@ -55,6 +55,55 @@ def crawl(log=print):
     return index
 
 
+def simple(s):
+    """Version simplifiée d'un titre pour comparer (sans accents, ponctuation ni casse)."""
+    import re
+    import unicodedata
+    s = unicodedata.normalize("NFKD", norm(s)).encode("ascii", "ignore").decode()
+    return re.sub(r"[^a-z0-9]", "", s)
+
+
+def link_by_name(log=print):
+    """Secours pour les albums dont le dossier ne correspond pas : on compare album, artiste, puis titres."""
+    albums, start = [], 0
+    while True:
+        page = get("getAlbums", start=start, count=100).get("array", [])
+        albums += page
+        if len(page) < 100:
+            break
+        start += 100
+        time.sleep(PAUSE)
+    owner = json.load(open(sync.CONFIG_FILE))["owner"]
+    rows = sync.call("GET", "/rest/v1/albums?select=id,data&owner=eq." + owner)
+    linked = 0
+    for row in rows:
+        d = row["data"]
+        if d.get("source") != "eversolo" or d.get("missing") or d.get("eversoloAlbumId") or not d.get("trackList"):
+            continue
+        candidates = [a for a in albums if simple(a.get("name")) == simple(d["album"])
+                      and (not a.get("artist") or simple(a["artist"]) in simple(d["artist"])
+                           or simple(d["artist"]) in simple(a["artist"]))]
+        best, best_hits = None, 0
+        for a in candidates:   # doublons possibles : on garde l'album qui couvre le plus de pistes
+            time.sleep(PAUSE)
+            tracks = get("getAlbumMusics", id=a["id"], start=0, count=200).get("array", [])
+            by_title = {simple(t.get("title")): t for t in tracks}
+            hits = {t["n"]: by_title[simple(t["title"])] for t in d["trackList"] if simple(t["title"]) in by_title}
+            if len(hits) > best_hits:
+                best, best_hits, best_map = a, len(hits), hits
+        if not best:
+            log("  introuvable : %s - %s" % (d["artist"], d["album"]))
+            continue
+        d["eversoloAlbumId"] = best["id"]
+        for t in d["trackList"]:
+            if t["n"] in best_map:
+                t["eversoloId"] = best_map[t["n"]]["id"]
+        sync.call("PATCH", "/rest/v1/albums?id=eq." + row["id"], {"data": d})
+        linked += 1
+        log("  relié : %s - %s (%d/%d pistes)" % (d["artist"], d["album"], best_hits, len(d["trackList"])))
+    return linked
+
+
 def main():
     index = crawl()
     owner = json.load(open(sync.CONFIG_FILE))["owner"]
@@ -76,6 +125,9 @@ def main():
             linked += 1
             partial += hits < len(d["trackList"])
     print("%d albums reliés à la bibliothèque de l'Eversolo (%d partiellement)." % (linked, partial))
+    extra = link_by_name()
+    if extra:
+        print("%d albums supplémentaires reliés par leur nom." % extra)
 
 
 if __name__ == "__main__":
