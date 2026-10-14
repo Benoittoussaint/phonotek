@@ -104,6 +104,30 @@ def link_by_name(log=print):
     return linked
 
 
+def complete_tracks(log=print):
+    """Pistes encore sans identifiant dans un album relié : on les retrouve par leur titre."""
+    owner = json.load(open(sync.CONFIG_FILE))["owner"]
+    left = []
+    for row in sync.call("GET", "/rest/v1/albums?select=id,data&owner=eq." + owner):
+        d = row["data"]
+        missing = [t for t in d.get("trackList") or [] if not t.get("eversoloId")]
+        if not d.get("eversoloAlbumId") or not missing:
+            continue
+        time.sleep(PAUSE)
+        tracks = get("getAlbumMusics", id=d["eversoloAlbumId"], start=0, count=200).get("array", [])
+        by_title = {simple(t.get("title")): t for t in tracks}
+        by_number = {t.get("number"): t for t in tracks}
+        for t in missing:
+            hit = by_title.get(simple(t["title"]))
+            if not hit and len(tracks) == len(d["trackList"]):
+                hit = by_number.get(t["n"])
+            if hit:
+                t["eversoloId"] = hit["id"]
+        sync.call("PATCH", "/rest/v1/albums?id=eq." + row["id"], {"data": d})
+        left += ["%s - %s : %s" % (d["artist"], d["album"], t["title"]) for t in d["trackList"] if not t.get("eversoloId")]
+    return left
+
+
 def main():
     index = crawl()
     owner = json.load(open(sync.CONFIG_FILE))["owner"]
@@ -128,6 +152,10 @@ def main():
     extra = link_by_name()
     if extra:
         print("%d albums supplémentaires reliés par leur nom." % extra)
+    left = complete_tracks()
+    print("Pistes encore non reliées : %d" % len(left))
+    for line in left:
+        print("  " + line)
 
 
 if __name__ == "__main__":
