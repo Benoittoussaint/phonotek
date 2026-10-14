@@ -320,6 +320,14 @@ function render() {
   for (const a of list) {
     if (by === "genre") {
       if (genreOf(a) !== last) { html += `<div class="group">${esc(genreOf(a))}</div>`; last = genreOf(a); }
+    } else if (by === "artist") {
+      // Un intertitre par artiste, avec le nombre de disques.
+      const key = sortKey(a.artist);
+      if (key !== last) {
+        const n = list.filter(x => sortKey(x.artist) === key).length;
+        html += `<div class="group">${esc(a.artist)}${n > 1 ? ` <span style="font-weight:400;color:var(--muted)">· ${n}</span>` : ""}</div>`;
+        last = key;
+      }
     } else if (by !== "added") {
       const letter = (sortKey(by === "album" ? a.album : a.artist)[0] || "#").toUpperCase();
       const g = /[A-Z]/.test(letter) ? letter : "#";
