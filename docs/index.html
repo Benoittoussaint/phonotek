@@ -188,6 +188,8 @@ const isIOS = /iPhone|iPad|iPod/.test(navigator.userAgent);
 const $ = s => document.querySelector(s);
 const norm = s => (s || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
 const sortKey = s => norm(s).replace(/^(the|les|le|la|l')\s+/, "");
+// Clé d'artiste : « The Notorious B.I.G. » et « Notorious BIG » donnent la même clé.
+const artistKey = s => sortKey(s).replace(/&|\band\b|\bet\b/g, " ").replace(/[^a-z0-9]/g, "");
 const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 const euros = v => v == null ? "" : v.toLocaleString("fr-FR", { style: "currency", currency: "EUR" });
 const genreOf = a => a.genre || NO_GENRE;
@@ -304,7 +306,7 @@ function render() {
     : by === "album" ? sortKey(x.album).localeCompare(sortKey(y.album))
     : by === "genre" ? (genreOf(x) === NO_GENRE) - (genreOf(y) === NO_GENRE) || genreOf(x).localeCompare(genreOf(y), "fr")
         || sortKey(x.artist).localeCompare(sortKey(y.artist)) || sortKey(x.album).localeCompare(sortKey(y.album))
-    : sortKey(x.artist).localeCompare(sortKey(y.artist)) || sortKey(x.album).localeCompare(sortKey(y.album)));
+    : artistKey(x.artist).localeCompare(artistKey(y.artist)) || sortKey(x.album).localeCompare(sortKey(y.album)));
   const unit = state.tab === "CD" ? "CD" : state.tab === "Wishlist" ? (all.length > 1 ? "envies" : "envie") : (all.length > 1 ? "vinyles" : "vinyle");
   $("#count").textContent = (list.length === all.length ? all.length : list.length + " sur " + all.length) + " " + unit;
 
@@ -322,9 +324,9 @@ function render() {
       if (genreOf(a) !== last) { html += `<div class="group">${esc(genreOf(a))}</div>`; last = genreOf(a); }
     } else if (by === "artist") {
       // Un intertitre par artiste, avec le nombre de disques.
-      const key = sortKey(a.artist);
+      const key = artistKey(a.artist);
       if (key !== last) {
-        const n = list.filter(x => sortKey(x.artist) === key).length;
+        const n = list.filter(x => artistKey(x.artist) === key).length;
         html += `<div class="group">${esc(a.artist)}${n > 1 ? ` <span style="font-weight:400;color:var(--muted)">· ${n}</span>` : ""}</div>`;
         last = key;
       }
