@@ -358,7 +358,8 @@ def scan(log=print):
     try:
         data = load_collection()
         by_folder = {a.get("folder"): a for a in data["albums"] if a.get("source") == "eversolo"}
-        by_key = {slug(a["artist"] + " " + a["album"]): a for a in data["albums"]}
+        # Doublons : on ne compare les CD qu'entre eux (un vinyle du même album n'est pas un doublon).
+        by_key = {slug(a["artist"] + " " + a["album"]): a for a in data["albums"] if a.get("source") == "eversolo"}
         seen, added = set(), []
         today = datetime.date.today().isoformat()
 
