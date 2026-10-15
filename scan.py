@@ -46,6 +46,10 @@ def mount():
     r = subprocess.run(["mount_smbfs", "-o", "rdonly,nobrowse",
                         "//guest:@%s/%s" % (EVERSOLO_HOST, EVERSOLO_SHARE), MOUNT_DIR],
                        capture_output=True, text=True)
+    finder_path = "/Volumes/" + EVERSOLO_SHARE
+    if r.returncode != 0 and "File exists" in r.stderr and os.access(finder_path, os.R_OK):
+        # Le partage est déjà ouvert dans le Finder : on passe par lui (lecture uniquement).
+        return finder_path, False
     if r.returncode != 0:
         raise RuntimeError("Eversolo injoignable (%s). Est-il allumé et sur le Wi-Fi ?" % r.stderr.strip())
     return MOUNT_DIR, True
