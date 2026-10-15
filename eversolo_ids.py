@@ -26,7 +26,9 @@ def get(path, **params):
 
 
 def norm(s):
-    return (s or "").replace("’", "'").replace("‐", "-").strip().lower()
+    # Le Mac et l'Eversolo n'encodent pas les accents de la même façon (NFD / NFC) : on unifie.
+    import unicodedata
+    return unicodedata.normalize("NFC", s or "").replace("’", "'").replace("‐", "-").strip().lower()
 
 
 def crawl(log=print):
