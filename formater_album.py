@@ -79,7 +79,10 @@ def main(folder, spec_file):
 
     new_folder = os.path.join(os.path.dirname(folder.rstrip("/")), safe(base))
     if os.path.abspath(new_folder) != os.path.abspath(folder):
-        os.rename(folder, new_folder)
+        # Le partage ignore la casse : un simple changement de majuscules passe par un nom temporaire.
+        temp = folder.rstrip("/") + "-phonotek-tmp"
+        os.rename(folder, temp)
+        os.rename(temp, new_folder)
     print("Dossier : %s" % new_folder)
 
 
