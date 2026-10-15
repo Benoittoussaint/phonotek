@@ -352,6 +352,40 @@ def fill_track_lists(data, log=print):
     return len(todo)
 
 
+def renumber(tracks):
+    """Numérote les pistes ; pour un album à plusieurs CD, position « 1-01 », « 2-01 »..."""
+    discs = {t.get("disc", 1) for t in tracks}
+    count = {}
+    for n, t in enumerate(tracks, 1):
+        d = t.get("disc", 1)
+        count[d] = count.get(d, 0) + 1
+        t["n"], t["idx"] = n, count[d] - 1
+        if len(discs) > 1:
+            t["pos"] = "%d-%02d" % (d, count[d])
+
+
+def merge_disc(album, rel, info):
+    """Ajoute le CD trouvé dans « rel » comme disque supplémentaire, s'il n'a aucun titre en commun.
+
+    L'Eversolo range le 2e CD d'un album double dans un dossier « Album-AAAAMMJJhhmmss ».
+    """
+    tracks = album.get("trackList") or []
+    if rel in album.get("discFolders", []) or rel == album.get("folder"):
+        return True
+    known = {slug(t["title"]) for t in tracks}
+    if not info.get("trackList") or known & {slug(t["title"]) for t in info["trackList"]}:
+        return False   # titres en commun : vrai doublon
+    disc = 1 + max([t.get("disc", 1) for t in tracks] or [0])
+    for t in tracks:
+        t.setdefault("disc", 1)
+    tracks += [dict(t, disc=disc, folder=rel) for t in info["trackList"]]
+    renumber(tracks)
+    album["trackList"], album["tracks"] = tracks, len(tracks)
+    album.setdefault("discFolders", []).append(rel)
+    album.pop("eversoloAlbumId", None)   # à relier de nouveau
+    return True
+
+
 def scan(log=print):
     """Relit l'Eversolo et ajoute les nouveautés. Ne touche jamais aux corrections manuelles."""
     share_root, mounted_here = mount()
@@ -382,8 +416,11 @@ def scan(log=print):
             if not info:
                 continue
             key = slug(info["artist"] + " " + info["album"])
-            if key in by_key:                      # doublon : même album dans un autre dossier
-                by_key[key].setdefault("duplicates", []).append(rel)
+            if key in by_key:                      # même album dans un autre dossier
+                if merge_disc(by_key[key], rel, info):
+                    log("  + CD supplémentaire : %s - %s" % (info["artist"], info["album"]))
+                else:
+                    by_key[key].setdefault("duplicates", []).append(rel)
                 seen.add(rel)
                 continue
             album_id = hashlib.sha1(rel.encode()).hexdigest()[:10]

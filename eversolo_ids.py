@@ -137,12 +137,17 @@ def main():
         d = row["data"]
         if d.get("source") != "eversolo" or not d.get("trackList"):
             continue
-        folder = norm(os.path.basename(d["folder"]))
         hits = 0
         for t in d["trackList"]:
+            # Les pistes d'un 2e CD ont leur propre dossier (et leur propre album sur l'Eversolo).
+            folder = norm(os.path.basename(t.get("folder") or d["folder"]))
             found = index.get((folder, norm(t.get("file"))))
             if found:
-                d["eversoloAlbumId"], t["eversoloId"] = found[0], found[1]
+                t["eversoloId"] = found[1]
+                if t.get("folder"):
+                    t["eversoloAlbumId"] = found[0]
+                else:
+                    d["eversoloAlbumId"] = found[0]
                 hits += 1
         if hits:
             sync.call("PATCH", "/rest/v1/albums?id=eq." + row["id"], {"data": d})
