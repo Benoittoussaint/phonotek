@@ -54,7 +54,7 @@
   .card { cursor: pointer; min-width: 0; }
   .grid.mangas { grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); }
   @media (max-width: 500px) { .grid.mangas { grid-template-columns: repeat(3, 1fr); } }
-  .mangas .cover, .dlg .cover.manga { aspect-ratio: 2 / 3; }
+  .mangas .cover, .card.manga .cover, .dlg .cover.manga { aspect-ratio: 2 / 3; }
   .cover { aspect-ratio: 1; width: 100%; border-radius: 6px; background: var(--line); object-fit: cover;
            display: block; box-shadow: var(--shadow); }
   .ph { display: flex; align-items: center; justify-content: center; color: var(--muted); font-size: 12px; text-align: center; padding: 8px; }
@@ -151,8 +151,8 @@
     <div class="tabs" id="tabs">
       <button data-tab="CD">CD</button>
       <button data-tab="Vinyle">Vinyles</button>
-      <button data-tab="Wishlist">Wishlist</button>
       <button data-tab="Mangas">Mangas</button>
+      <button data-tab="Wishlist">Wishlist</button>
       <button data-tab="Moi">Moi</button>
     </div>
     <div class="tools" id="tools">
@@ -186,9 +186,12 @@ const BASE_GENRES = ["Rap / Hip-hop", "Rap français", "Rock", "Pop", "Jazz", "B
   "Électro", "Chanson française", "Musiques du monde", "Classique", "Bande originale"];
 const TAB_NAMES = { CD: "CD", Vinyle: "Vinyles", Wishlist: "Wishlist", Mangas: "Mangas" };
 const MANGATEK = "https://benoittoussaint.github.io/mangatek/";
+// Mangas d'un membre : sa collection (wish = false) ou sa wishlist (wish = true).
+const mangasOf = (owner, wish) => state.mangas.filter(m => m.owner === owner && !!m.wish === wish);
 function tabCount(tab) {
-  if (tab === "Mangas") return state.mangas.filter(m => m.owner === state.viewing).length;
-  return state.albums.filter(a => !a.missing && a.owner === state.viewing && tabOf(a) === tab).length;
+  if (tab === "Mangas") return mangasOf(state.viewing, false).length;
+  const n = state.albums.filter(a => !a.missing && a.owner === state.viewing && tabOf(a) === tab).length;
+  return tab === "Wishlist" ? n + mangasOf(state.viewing, true).length : n;
 }
 const CONDITIONS = [["Mint (M)", "Neuf (M)"], ["Near Mint (NM or M-)", "Quasi neuf (NM)"],
   ["Very Good Plus (VG+)", "Très bon (VG+)"], ["Very Good (VG)", "Bon (VG)"], ["Good Plus (G+)", "Correct (G+)"]];
@@ -241,7 +244,7 @@ async function loadAll() {
   if (albums.error) throw albums.error;
   state.albums = albums.data.map(rowToAlbum);
   state.profiles = profiles.data || [];
-  state.mangas = (mangas.data || []).map(rowToAlbum).filter(m => !m.wish);
+  state.mangas = (mangas.data || []).map(rowToAlbum);
   saveCache();
   precacheCovers();
 }
@@ -310,7 +313,13 @@ function render() {
   $("#q").placeholder = state.tab === "Mangas" ? "Rechercher une série, un auteur..." : "Rechercher un artiste, un album, un style...";
   $("#shazamBtn").hidden = !isIOS || state.tab === "Mangas";
   if (state.tab === "Moi") { $("#tools").hidden = true; $("#grid").hidden = true; $("#count").textContent = ""; return renderMe(); }
-  if (state.tab === "Mangas") { $("#tools").hidden = false; $("#grid").hidden = false; $("#panel").hidden = true; $("#addBtn").hidden = true; return renderMangas(); }
+  const wishOnlyMangas = state.tab === "Wishlist" && !state.albums.some(a => a.owner === state.viewing && a.wish) && mangasOf(state.viewing, true).length;
+  if (state.tab === "Mangas" || wishOnlyMangas) {
+    $("#tools").hidden = false; $("#grid").hidden = false; $("#panel").hidden = true; $("#addBtn").hidden = true;
+    $("#genre").hidden = $("#sort").hidden = true; $("#grid").classList.add("mangas");
+    $("#q").placeholder = "Rechercher une série, un auteur...";
+    return renderMangas(state.tab === "Wishlist");
+  }
   $("#tools").hidden = false; $("#grid").hidden = false; $("#panel").hidden = true;
   $("#addBtn").hidden = state.tab === "CD" || !isMe;
   $("#addBtn").textContent = state.tab === "Wishlist" ? "Ajouter à la wishlist" : "Ajouter un vinyle";
@@ -359,13 +368,19 @@ function render() {
       <div class="a"><span class="badge">${esc(a.support)}</span>${esc(a.artist)}</div>
       ${a.wish && a.price && a.price.lowest != null ? `<div class="price">dès ${euros(a.price.lowest)}</div>` : ""}</div>`;
   }
+  // Wishlist : les mangas souhaités viennent à la suite des disques.
+  const wishMangas = state.tab === "Wishlist" ? mangaList(true) : [];
+  if (wishMangas.length) {
+    html += `<div class="group">Mangas</div>` + wishMangas.map(m => mangaCard(m, true)).join("");
+    $("#count").textContent = (list.length + wishMangas.length) + " envies";
+  }
   $("#grid").innerHTML = html;
 }
 
 // ---------- Onglet Mangas (collections Mangatek, en lecture seule) ----------
 const mKey = s => sortKey(s).replace(/[^a-z0-9]/g, "");
 function missingTomes(owner, series) {
-  const nums = [...new Set(state.mangas.filter(m => m.owner === owner && mKey(m.series) === mKey(series))
+  const nums = [...new Set(mangasOf(owner, false).filter(m => mKey(m.series) === mKey(series))
     .map(m => m.tome).filter(n => n != null))].sort((a, b) => a - b);
   const missing = [];
   for (let n = 1; n <= (nums[nums.length - 1] || 0); n++) if (!nums.includes(n)) missing.push(n);
@@ -379,25 +394,38 @@ function missingTomes(owner, series) {
   return out.join(", ");
 }
 
-function renderMangas() {
+function mangaList(wish) {
   const words = norm(state.q).split(/\s+/).filter(Boolean);
-  const all = state.mangas.filter(m => m.owner === state.viewing);
-  const list = all.filter(m => words.every(w => norm([m.series, m.tome, m.title, m.authors, m.publisher].join(" ")).includes(w)))
+  return mangasOf(state.viewing, wish)
+    .filter(m => words.every(w => norm([m.series, m.tome, m.title, m.authors, m.publisher].join(" ")).includes(w)))
     .sort((x, y) => mKey(x.series).localeCompare(mKey(y.series)) || (x.tome ?? 9999) - (y.tome ?? 9999));
+}
+
+// full : nom de la série sur la carte (wishlist, sans intertitre par série).
+function mangaCard(m, full) {
+  const img = m.cover ? `<img class="cover" loading="lazy" src="${esc(m.cover)}" alt="">` : `<div class="cover ph">${esc(m.series)} ${esc(m.tome ?? "")}</div>`;
+  const tome = m.tome != null ? "Tome " + m.tome : esc(m.title || "Hors série");
+  return `<div class="card manga" data-id="${m.id}">${img}<div class="t">${full ? esc(m.series) : tome}</div>
+    ${full ? `<div class="a">${tome}</div>` : m.title && m.tome != null ? `<div class="a">${esc(m.title)}</div>` : ""}
+    ${full && m.priceNew != null ? `<div class="price">neuf ${euros(m.priceNew)}</div>` : ""}</div>`;
+}
+
+function renderMangas(wish) {
+  const all = mangasOf(state.viewing, wish);
+  const list = mangaList(wish);
   const series = new Set(all.map(m => mKey(m.series))).size;
-  $("#count").textContent = (list.length === all.length ? all.length : list.length + " sur " + all.length) + " tomes · " + series + " série" + (series > 1 ? "s" : "");
+  $("#count").textContent = (list.length === all.length ? all.length : list.length + " sur " + all.length)
+    + (wish ? (all.length > 1 ? " envies" : " envie") : " tomes · " + series + " série" + (series > 1 ? "s" : ""));
   if (!list.length) { $("#grid").innerHTML = `<div class="empty">${all.length ? "Aucun manga trouvé." : "Pas de manga."}</div>`; return; }
   let html = "", last = null;
   for (const m of list) {
     if (mKey(m.series) !== last) {
       last = mKey(m.series);
       const n = list.filter(x => mKey(x.series) === last).length;
-      const miss = missingTomes(m.owner, m.series);
+      const miss = wish ? "" : missingTomes(m.owner, m.series);
       html += `<div class="group">${esc(m.series)}<span style="font-weight:400;color:var(--muted)"> · ${n} tome${n > 1 ? "s" : ""}${miss ? " · manque " + esc(miss) : ""}</span></div>`;
     }
-    const img = m.cover ? `<img class="cover" loading="lazy" src="${esc(m.cover)}" alt="">` : `<div class="cover ph">${esc(m.series)} ${esc(m.tome ?? "")}</div>`;
-    html += `<div class="card" data-id="${m.id}">${img}<div class="t">${m.tome != null ? "Tome " + m.tome : esc(m.title || "Hors série")}</div>
-      ${m.title && m.tome != null ? `<div class="a">${esc(m.title)}</div>` : ""}</div>`;
+    html += mangaCard(m, false);
   }
   $("#grid").innerHTML = html;
 }
@@ -409,7 +437,7 @@ function openManga(id) {
     ${m.cover ? `<img class="cover manga" src="${esc(m.cover)}" alt="">` : '<div class="cover manga ph">Pas de couverture</div>'}
     <h2>${esc(m.series)}${m.tome != null ? " · tome " + m.tome : ""}</h2>
     ${m.title ? `<div>${esc(m.title)}</div>` : ""}<div class="meta" style="margin-top:4px">${esc(m.authors || "")}</div>
-    <div class="meta">${[m.publisher, m.year, m.isbn ? "ISBN " + m.isbn : "", "ajouté le " + m.added, "collection " + deName(nameOf(m.owner))].filter(Boolean).map(esc).join(" · ")}</div>
+    <div class="meta">${[m.publisher, m.year, m.isbn ? "ISBN " + m.isbn : "", "ajouté le " + m.added, (m.wish ? "wishlist " : "collection ") + deName(nameOf(m.owner))].filter(Boolean).map(esc).join(" · ")}</div>
     ${m.priceNew != null ? `<div class="meta">Prix neuf : <b>${euros(m.priceNew)}</b></div>` : ""}
     ${p.price != null ? `<div class="meta">Acheté ${euros(p.price)}${p.shop ? " (" + esc(p.shop) + ")" : ""}</div>` : ""}
     <div class="row"><a class="btn" href="${MANGATEK}?q=${encodeURIComponent(m.series)}" target="_blank" rel="noopener" style="text-decoration:none;border:1px solid var(--line);border-radius:10px;padding:9px 14px;color:var(--text)">Ouvrir dans Mangatek</a>
@@ -976,7 +1004,7 @@ $("#viewing").onchange = e => {
   if (state.tab === "Moi" || !tabCount(state.tab)) state.tab = ["Vinyle", "CD", "Mangas", "Wishlist"].find(tabCount) || "Vinyle";
   savePrefs(); renderGenres(); render();
 };
-$("#grid").onclick = e => { const c = e.target.closest(".card"); if (c) (state.tab === "Mangas" ? openManga : openAlbum)(c.dataset.id); };
+$("#grid").onclick = e => { const c = e.target.closest(".card"); if (c) (c.classList.contains("manga") ? openManga : openAlbum)(c.dataset.id); };
 $("#q").oninput = e => { state.q = e.target.value; render(); };
 $("#genre").onchange = e => { state.genre = e.target.value; render(); };
 $("#sort").onchange = e => { state.sort = e.target.value; savePrefs(); render(); };
