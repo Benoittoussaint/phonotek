@@ -52,6 +52,9 @@
   .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 18px 14px; }
   @media (max-width: 500px) { .grid { grid-template-columns: repeat(2, 1fr); } }
   .card { cursor: pointer; min-width: 0; }
+  .grid.mangas { grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); }
+  @media (max-width: 500px) { .grid.mangas { grid-template-columns: repeat(3, 1fr); } }
+  .mangas .cover, .dlg .cover.manga { aspect-ratio: 2 / 3; }
   .cover { aspect-ratio: 1; width: 100%; border-radius: 6px; background: var(--line); object-fit: cover;
            display: block; box-shadow: var(--shadow); }
   .ph { display: flex; align-items: center; justify-content: center; color: var(--muted); font-size: 12px; text-align: center; padding: 8px; }
@@ -149,6 +152,7 @@
       <button data-tab="CD">CD</button>
       <button data-tab="Vinyle">Vinyles</button>
       <button data-tab="Wishlist">Wishlist</button>
+      <button data-tab="Mangas">Mangas</button>
       <button data-tab="Moi">Moi</button>
     </div>
     <div class="tools" id="tools">
@@ -176,11 +180,16 @@ const SUPABASE_KEY = "sb_publishable_LxZwfOOwNefFS9rejT-JiA_Dv6vHKH5";   // clé
 const EVERSOLO = "http://192.168.1.91:9529";
 const db = window.supabase ? window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY) : null;
 
-const state = { me: null, albums: [], profiles: [], viewing: null, tab: "CD", q: "", sort: "artist", genre: "" };
+const state = { me: null, albums: [], mangas: [], profiles: [], viewing: null, tab: "CD", q: "", sort: "artist", genre: "" };
 const NO_GENRE = "Style inconnu";
 const BASE_GENRES = ["Rap / Hip-hop", "Rap français", "Rock", "Pop", "Jazz", "Blues", "Reggae", "Soul / Funk",
   "Électro", "Chanson française", "Musiques du monde", "Classique", "Bande originale"];
-const TAB_NAMES = { CD: "CD", Vinyle: "Vinyles", Wishlist: "Wishlist" };
+const TAB_NAMES = { CD: "CD", Vinyle: "Vinyles", Wishlist: "Wishlist", Mangas: "Mangas" };
+const MANGATEK = "https://benoittoussaint.github.io/mangatek/";
+function tabCount(tab) {
+  if (tab === "Mangas") return state.mangas.filter(m => m.owner === state.viewing).length;
+  return state.albums.filter(a => !a.missing && a.owner === state.viewing && tabOf(a) === tab).length;
+}
 const CONDITIONS = [["Mint (M)", "Neuf (M)"], ["Near Mint (NM or M-)", "Quasi neuf (NM)"],
   ["Very Good Plus (VG+)", "Très bon (VG+)"], ["Very Good (VG)", "Bon (VG)"], ["Good Plus (G+)", "Correct (G+)"]];
 const isIOS = /iPhone|iPad|iPod/.test(navigator.userAgent);
@@ -224,19 +233,21 @@ function rowToAlbum(r) { return Object.assign({}, r.data, { id: r.id, owner: r.o
 function albumData(a) { const d = Object.assign({}, a); delete d.id; delete d.owner; return d; }
 
 async function loadAll() {
-  const [albums, profiles] = await Promise.all([
+  const [albums, profiles, mangas] = await Promise.all([
     db.from("albums").select("id,owner,data").limit(10000),
     db.from("profiles").select("id,name"),
+    db.from("mangas").select("id,owner,data").limit(10000),   // collections Mangatek, en lecture
   ]);
   if (albums.error) throw albums.error;
   state.albums = albums.data.map(rowToAlbum);
   state.profiles = profiles.data || [];
-  store.set("cache", { me: state.me, albums: state.albums, profiles: state.profiles });
+  state.mangas = (mangas.data || []).map(rowToAlbum).filter(m => !m.wish);
+  saveCache();
   precacheCovers();
 }
 
 function precacheCovers() {
-  const urls = state.albums.map(a => a.cover).filter(Boolean);
+  const urls = [...state.albums, ...state.mangas].map(a => a.cover).filter(Boolean);
   navigator.serviceWorker && navigator.serviceWorker.ready
     .then(reg => reg.active && reg.active.postMessage({ type: "precache", urls })).catch(() => {});
 }
@@ -245,8 +256,9 @@ async function saveAlbum(a) {
   if (!navigator.onLine) throw new Error("Pas de réseau : la modification n’a pas été enregistrée.");
   const { error } = await db.from("albums").update({ data: albumData(a) }).eq("id", a.id);
   if (error) throw new Error(error.message);
-  store.set("cache", { me: state.me, albums: state.albums, profiles: state.profiles });
+  saveCache();
 }
+function saveCache() { store.set("cache", { me: state.me, albums: state.albums, mangas: state.mangas, profiles: state.profiles }); }
 
 // ---------- Affichage ----------
 function showApp() {
@@ -287,11 +299,18 @@ function render() {
   document.querySelectorAll("#tabs button").forEach(b => {
     b.classList.toggle("on", b.dataset.tab === state.tab);
     if (b.dataset.tab === "Moi") return;
-    const n = state.albums.filter(a => !a.missing && a.owner === state.viewing && tabOf(a) === b.dataset.tab).length;
+    const n = tabCount(b.dataset.tab);
     b.textContent = TAB_NAMES[b.dataset.tab] + " (" + n + ")";
+    // Onglet Mangas seulement s'il y a des mangas ; chez les autres, les onglets vides sont masqués.
+    b.hidden = !n && b.dataset.tab !== state.tab && (b.dataset.tab === "Mangas" || !isMe);
   });
   $("#offline").hidden = navigator.onLine;
+  $("#grid").classList.toggle("mangas", state.tab === "Mangas");
+  $("#genre").hidden = $("#sort").hidden = state.tab === "Mangas";
+  $("#q").placeholder = state.tab === "Mangas" ? "Rechercher une série, un auteur..." : "Rechercher un artiste, un album, un style...";
+  $("#shazamBtn").hidden = !isIOS || state.tab === "Mangas";
   if (state.tab === "Moi") { $("#tools").hidden = true; $("#grid").hidden = true; $("#count").textContent = ""; return renderMe(); }
+  if (state.tab === "Mangas") { $("#tools").hidden = false; $("#grid").hidden = false; $("#panel").hidden = true; $("#addBtn").hidden = true; return renderMangas(); }
   $("#tools").hidden = false; $("#grid").hidden = false; $("#panel").hidden = true;
   $("#addBtn").hidden = state.tab === "CD" || !isMe;
   $("#addBtn").textContent = state.tab === "Wishlist" ? "Ajouter à la wishlist" : "Ajouter un vinyle";
@@ -341,6 +360,62 @@ function render() {
       ${a.wish && a.price && a.price.lowest != null ? `<div class="price">dès ${euros(a.price.lowest)}</div>` : ""}</div>`;
   }
   $("#grid").innerHTML = html;
+}
+
+// ---------- Onglet Mangas (collections Mangatek, en lecture seule) ----------
+const mKey = s => sortKey(s).replace(/[^a-z0-9]/g, "");
+function missingTomes(owner, series) {
+  const nums = [...new Set(state.mangas.filter(m => m.owner === owner && mKey(m.series) === mKey(series))
+    .map(m => m.tome).filter(n => n != null))].sort((a, b) => a - b);
+  const missing = [];
+  for (let n = 1; n <= (nums[nums.length - 1] || 0); n++) if (!nums.includes(n)) missing.push(n);
+  const out = [];
+  for (let i = 0; i < missing.length; i++) {
+    let j = i;
+    while (j + 1 < missing.length && missing[j + 1] === missing[j] + 1) j++;
+    out.push(i === j ? missing[i] : j === i + 1 ? missing[i] + ", " + missing[j] : missing[i] + " à " + missing[j]);
+    i = j;
+  }
+  return out.join(", ");
+}
+
+function renderMangas() {
+  const words = norm(state.q).split(/\s+/).filter(Boolean);
+  const all = state.mangas.filter(m => m.owner === state.viewing);
+  const list = all.filter(m => words.every(w => norm([m.series, m.tome, m.title, m.authors, m.publisher].join(" ")).includes(w)))
+    .sort((x, y) => mKey(x.series).localeCompare(mKey(y.series)) || (x.tome ?? 9999) - (y.tome ?? 9999));
+  const series = new Set(all.map(m => mKey(m.series))).size;
+  $("#count").textContent = (list.length === all.length ? all.length : list.length + " sur " + all.length) + " tomes · " + series + " série" + (series > 1 ? "s" : "");
+  if (!list.length) { $("#grid").innerHTML = `<div class="empty">${all.length ? "Aucun manga trouvé." : "Pas de manga."}</div>`; return; }
+  let html = "", last = null;
+  for (const m of list) {
+    if (mKey(m.series) !== last) {
+      last = mKey(m.series);
+      const n = list.filter(x => mKey(x.series) === last).length;
+      const miss = missingTomes(m.owner, m.series);
+      html += `<div class="group">${esc(m.series)}<span style="font-weight:400;color:var(--muted)"> · ${n} tome${n > 1 ? "s" : ""}${miss ? " · manque " + esc(miss) : ""}</span></div>`;
+    }
+    const img = m.cover ? `<img class="cover" loading="lazy" src="${esc(m.cover)}" alt="">` : `<div class="cover ph">${esc(m.series)} ${esc(m.tome ?? "")}</div>`;
+    html += `<div class="card" data-id="${m.id}">${img}<div class="t">${m.tome != null ? "Tome " + m.tome : esc(m.title || "Hors série")}</div>
+      ${m.title && m.tome != null ? `<div class="a">${esc(m.title)}</div>` : ""}</div>`;
+  }
+  $("#grid").innerHTML = html;
+}
+
+function openManga(id) {
+  const m = state.mangas.find(x => x.id === id);
+  const p = m.purchase || {};
+  $("#dlgBody").innerHTML = `
+    ${m.cover ? `<img class="cover manga" src="${esc(m.cover)}" alt="">` : '<div class="cover manga ph">Pas de couverture</div>'}
+    <h2>${esc(m.series)}${m.tome != null ? " · tome " + m.tome : ""}</h2>
+    ${m.title ? `<div>${esc(m.title)}</div>` : ""}<div class="meta" style="margin-top:4px">${esc(m.authors || "")}</div>
+    <div class="meta">${[m.publisher, m.year, m.isbn ? "ISBN " + m.isbn : "", "ajouté le " + m.added, "collection " + deName(nameOf(m.owner))].filter(Boolean).map(esc).join(" · ")}</div>
+    ${m.priceNew != null ? `<div class="meta">Prix neuf : <b>${euros(m.priceNew)}</b></div>` : ""}
+    ${p.price != null ? `<div class="meta">Acheté ${euros(p.price)}${p.shop ? " (" + esc(p.shop) + ")" : ""}</div>` : ""}
+    <div class="row"><a class="btn" href="${MANGATEK}?q=${encodeURIComponent(m.series)}" target="_blank" rel="noopener" style="text-decoration:none;border:1px solid var(--line);border-radius:10px;padding:9px 14px;color:var(--text)">Ouvrir dans Mangatek</a>
+      <span class="spacer"></span><button id="closeBtn" autofocus>Fermer</button></div>`;
+  $("#closeBtn").onclick = () => $("#dlg").close();
+  openDialog();
 }
 
 // ---------- Onglet Moi ----------
@@ -869,7 +944,7 @@ async function start() {
   if (!session) { $("#loginView").hidden = false; return; }
   state.me = session.user.id;
   state.viewing = prefs.viewing || state.me;
-  if (cache && cache.me === state.me) { Object.assign(state, { albums: cache.albums, profiles: cache.profiles }); showApp(); }
+  if (cache && cache.me === state.me) { Object.assign(state, { albums: cache.albums, mangas: cache.mangas || [], profiles: cache.profiles }); showApp(); }
   if (navigator.onLine) {
     try { await loadAll(); } catch (e) { if (!cache) return toast("Chargement impossible : " + e.message); }
   }
@@ -895,12 +970,16 @@ $("#tabs").onclick = e => {
   const b = e.target.closest("button"); if (!b) return;
   state.tab = b.dataset.tab; state.genre = ""; savePrefs(); renderGenres(); render(); window.scrollTo(0, 0);
 };
-$("#viewing").onchange = e => { state.viewing = e.target.value; state.genre = ""; if (state.tab === "Moi") state.tab = "Vinyle"; savePrefs(); renderGenres(); render(); };
-$("#grid").onclick = e => { const c = e.target.closest(".card"); if (c) openAlbum(c.dataset.id); };
+$("#viewing").onchange = e => {
+  state.viewing = e.target.value; state.genre = "";
+  // On arrive sur un onglet qui a du contenu (les mangas pour un membre qui n'a que des mangas).
+  if (state.tab === "Moi" || !tabCount(state.tab)) state.tab = ["Vinyle", "CD", "Mangas", "Wishlist"].find(tabCount) || "Vinyle";
+  savePrefs(); renderGenres(); render();
+};
+$("#grid").onclick = e => { const c = e.target.closest(".card"); if (c) (state.tab === "Mangas" ? openManga : openAlbum)(c.dataset.id); };
 $("#q").oninput = e => { state.q = e.target.value; render(); };
 $("#genre").onchange = e => { state.genre = e.target.value; render(); };
 $("#sort").onchange = e => { state.sort = e.target.value; savePrefs(); render(); };
-$("#shazamBtn").hidden = !isIOS;
 $("#shazamBtn").onclick = launchShazam;
 $("#addBtn").onclick = () => openAddVinyl(state.tab === "Wishlist" ? "wish" : "collection");
 window.addEventListener("online", render);
