@@ -221,9 +221,9 @@ function toast(msg) {
 }
 
 // ---------- Données ----------
-async function fn(action, payload = {}) {
+async function fn(action, payload = {}, fname = "phonotek-api") {
   if (!navigator.onLine) throw new Error("Pas de réseau : réessaie quand tu seras connecté.");
-  const { data, error } = await db.functions.invoke("phonotek-api", { body: Object.assign({ action }, payload) });
+  const { data, error } = await db.functions.invoke(fname, { body: Object.assign({ action }, payload) });
   if (error) {
     let msg = error.message;
     try { msg = (await error.context.json()).error || msg; } catch (e) {}
@@ -437,12 +437,22 @@ function openManga(id) {
     ${m.cover ? `<img class="cover manga" src="${esc(m.cover)}" alt="">` : '<div class="cover manga ph">Pas de couverture</div>'}
     <h2>${esc(m.series)}${m.tome != null ? " · tome " + m.tome : ""}</h2>
     ${m.title ? `<div>${esc(m.title)}</div>` : ""}<div class="meta" style="margin-top:4px">${esc(m.authors || "")}</div>
-    <div class="meta">${[m.publisher, m.year, m.isbn ? "ISBN " + m.isbn : "", "ajouté le " + m.added, (m.wish ? "wishlist " : "collection ") + deName(nameOf(m.owner))].filter(Boolean).map(esc).join(" · ")}</div>
+    <div class="meta">${[m.publisher, m.year, m.isbn ? "ISBN " + m.isbn : "", "ajouté le " + m.added, m.boughtBy ? "offert par " + m.boughtBy : "", (m.wish ? "wishlist " : "collection ") + deName(nameOf(m.owner))].filter(Boolean).map(esc).join(" · ")}</div>
     ${m.priceNew != null ? `<div class="meta">Prix neuf : <b>${euros(m.priceNew)}</b></div>` : ""}
     ${p.price != null ? `<div class="meta">Acheté ${euros(p.price)}${p.shop ? " (" + esc(p.shop) + ")" : ""}</div>` : ""}
     <div class="row"><a class="btn" href="${MANGATEK}?q=${encodeURIComponent(m.series)}" target="_blank" rel="noopener" style="text-decoration:none;border:1px solid var(--line);border-radius:10px;padding:9px 14px;color:var(--text)">Ouvrir dans Mangatek</a>
-      <span class="spacer"></span><button id="closeBtn" autofocus>Fermer</button></div>`;
+      <span class="spacer"></span><button id="closeBtn" autofocus>Fermer</button>
+      ${m.wish ? `<button id="boughtBtn" class="primary">Je l’ai acheté${mine(m) ? "" : " pour " + esc(nameOf(m.owner))}</button>` : ""}</div>`;
   $("#closeBtn").onclick = () => $("#dlg").close();
+  // « Je l'ai acheté » : le manga passe de la wishlist à la collection Mangatek de son propriétaire.
+  if ($("#boughtBtn")) $("#boughtBtn").onclick = async e => {
+    e.target.disabled = true;
+    try {
+      Object.assign(m, await fn("bought", { mangaId: m.id }, "mangatek-api"));
+      saveCache(); render(); $("#dlg").close();
+      toast(`« ${m.series}${m.tome != null ? " " + m.tome : ""} » est passé dans la collection ${deName(nameOf(m.owner))}.`);
+    } catch (err) { e.target.disabled = false; toast(err.message); }
+  };
   openDialog();
 }
 
