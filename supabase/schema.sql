@@ -8,6 +8,10 @@ create table if not exists public.profiles (
   created_at timestamptz not null default now()
 );
 alter table public.profiles enable row level security;
+-- Accès par l'application (obligatoire pour les tables créées après le 30 octobre 2026).
+-- Pas d'accès sans connexion (anon) : l'application demande toujours de se connecter.
+grant select, insert, update, delete on public.profiles to authenticated;
+grant select, insert, update, delete on public.profiles to service_role;
 create policy "profils visibles par les membres" on public.profiles
   for select to authenticated using (true);
 create policy "chacun crée son profil" on public.profiles
@@ -25,6 +29,10 @@ create table if not exists public.albums (
 );
 create index if not exists albums_owner_idx on public.albums (owner);
 alter table public.albums enable row level security;
+-- Accès par l'application (obligatoire pour les tables créées après le 30 octobre 2026).
+-- Pas d'accès sans connexion (anon) : l'application demande toujours de se connecter.
+grant select, insert, update, delete on public.albums to authenticated;
+grant select, insert, update, delete on public.albums to service_role;
 -- Chacun voit la collection de tout le monde...
 create policy "collections visibles par les membres" on public.albums
   for select to authenticated using (true);
